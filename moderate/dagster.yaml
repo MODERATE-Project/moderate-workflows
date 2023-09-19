@@ -1,0 +1,27 @@
+storage:
+  postgres:
+    postgres_db:
+      username:
+        env: DAGSTER_PG_USERNAME
+      password:
+        env: DAGSTER_PG_PASSWORD
+      hostname:
+        env: DAGSTER_PG_HOST
+      db_name:
+        env: DAGSTER_PG_DB
+      port: 5432
+# storage:
+#   postgres:
+#     postgres_url: { PG_DB_CONN_STRING }
+# run_launcher:
+#   module: dagster_k8s.launcher
+#   class: K8sRunLauncher
+#   config:
+#     service_account_name:
+#       env: PIPELINE_RUN_SERVICE_ACCOUNT
+#     job_image:
+#       env: DAGSTER_IMAGE_NAME
+#     instance_config_map:
+#       env: DAGSTER_INSTANCE_CONFIG_MAP
+#     postgres_password_secret:
+#       env: DAGSTER_POSTGRES_SECRET

@@ -1,0 +1,24 @@
+dagster-user-deployments:
+  enabled: true
+  deployments:
+    - name: "k8s-code-location-moderate"
+      image:
+        repository: "${IMAGE_REMOTE_NAME}"
+        tag: ${IMAGE_REMOTE_TAG}
+        pullPolicy: Always
+      dagsterApiGrpcArgs:
+        - "--package-name"
+        - "moderate"
+      port: 3030
+      resources:
+        requests:
+          cpu: 200m
+          memory: 128Mi
+postgresql:
+  enabled: false
+  postgresqlHost: host.docker.internal
+  postgresqlUsername: ${POSTGRES_USER}
+  postgresqlPassword: ${POSTGRES_PASSWORD}
+  postgresqlDatabase: ${POSTGRES_DB}
+  service:
+    port: 5432
