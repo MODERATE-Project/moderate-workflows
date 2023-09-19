@@ -5,12 +5,14 @@ _VERSION_DAGSTER_EXT = "0.20.14"
 
 setup(
     name="moderate",
+    version="0.1.0",
     packages=find_packages(exclude=["moderate_tests"]),
     install_requires=[
         f"dagster=={_VERSION_DAGSTER}",
         f"dagster-postgres=={_VERSION_DAGSTER_EXT}",
         f"dagster-k8s=={_VERSION_DAGSTER_EXT}",
         "pandas==2.0.3",
+        "python-keycloak==2.16.1",
     ],
     extras_require={
         "dev": [

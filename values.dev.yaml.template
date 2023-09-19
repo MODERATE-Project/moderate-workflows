@@ -14,6 +14,8 @@ dagster-user-deployments:
         requests:
           cpu: 200m
           memory: 128Mi
+      envSecrets:
+        - name: dagster-secrets
 postgresql:
   enabled: false
   postgresqlHost: host.docker.internal

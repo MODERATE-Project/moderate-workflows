@@ -4,10 +4,13 @@ vars:
   MINIKUBE_MEM: 8G
   MINIKUBE_CPU: 2
   DAGSTER_CHART_VERSION: 1.4.14
-  DAGSTER_WEBSERVER_PORT: 8080
+  DAGSTER_WEBSERVER_PORT: 8181
   IMAGE_LOCAL_NAME: moderate-dagster
   IMAGE_REMOTE_NAME: agmangas/moderate-dagster
   IMAGE_REMOTE_TAG: latest
+  VENV_NAME: .venv
+  SECRETS_ENV_FILE: dagster-secrets.env
+  SECRETS_NAME: dagster-secrets
 
 env:
   IMAGE_REMOTE_NAME: "{{.IMAGE_REMOTE_NAME}}"
@@ -16,6 +19,16 @@ env:
 dotenv: [.env, .env.default]
 
 tasks:
+  clean:
+    desc: Clean up the dev environment
+    cmds:
+      - minikube delete
+      - docker compose -f {{.ROOT_DIR}}/docker-compose.dev.yml down
+      - cmd: rm values.dev.yaml
+        ignore_error: true
+      - cmd: rm {{.ROOT_DIR}}/{{.SECRETS_ENV_FILE}}
+        ignore_error: true
+
   compose-up:
     desc: Start the Compose stack
     cmds:
@@ -33,7 +46,23 @@ tasks:
     cmds:
       - envsubst < {{.ROOT_DIR}}/values.dev.yaml.template > {{.ROOT_DIR}}/values.dev.yaml
 
-  helm-dagster:
+  build-dagster-secrets-envfile:
+    desc: Build the Dagster secrets envfile
+    cmds:
+      - cmd: rm {{.ROOT_DIR}}/{{.SECRETS_ENV_FILE}}
+        ignore_error: true
+      - echo "KEYCLOAK_SERVER_URL=http://host.docker.internal:8080/" >> {{.ROOT_DIR}}/{{.SECRETS_ENV_FILE}}
+      - echo "KEYCLOAK_ADMIN_USERNAME={{.KEYCLOAK_ADMIN}}" >> {{.ROOT_DIR}}/{{.SECRETS_ENV_FILE}}
+      - echo "KEYCLOAK_ADMIN_PASSWORD={{.KEYCLOAK_ADMIN_PASSWORD}}" >> {{.ROOT_DIR}}/{{.SECRETS_ENV_FILE}}
+
+  create-dagster-secrets:
+    desc: Create the Dagster secrets
+    deps:
+      - build-dagster-secrets-envfile
+    cmds:
+      - kubectl create secret generic {{.SECRETS_NAME}} --from-env-file={{.ROOT_DIR}}/{{.SECRETS_ENV_FILE}}
+
+  install-helm-dagster:
     desc: Install Dagster Helm chart
     cmds:
       - helm repo add dagster https://dagster-io.github.io/helm
@@ -43,24 +72,23 @@ tasks:
         --version {{.DAGSTER_CHART_VERSION}} 
         -f {{.ROOT_DIR}}/values.dev.yaml
 
-  clean:
-    desc: Clean up the dev environment
+  push-code-image:
+    desc: Push the code image to Docker Hub
     cmds:
-      - minikube delete
-      - docker compose -f {{.ROOT_DIR}}/docker-compose.dev.yml down
+      - docker build -t {{.IMAGE_LOCAL_NAME}} {{.ROOT_DIR}}
+      - docker tag {{.IMAGE_LOCAL_NAME}} {{.IMAGE_REMOTE_NAME}}:{{.IMAGE_REMOTE_TAG}}
+      - docker push {{.IMAGE_REMOTE_NAME}}:{{.IMAGE_REMOTE_TAG}}
 
-  start-dev:
-    desc: Start the dev environment
+  start-dev-k8s:
+    desc: Start the dev environment in the local Kubernetes cluster
     cmds:
+      - task: push-code-image
       - task: compose-up
       - task: minikube-start
-      - task: helm-dagster
+      - task: create-dagster-secrets
+      - task: install-helm-dagster
 
-  default:
-    cmds:
-      - task: start-dev
-
-  dagster-webserver:
+  forward-k8s-dagster-webserver:
     desc: Forward the Dagster Webserver port
     cmds:
       - >
@@ -70,9 +98,20 @@ tasks:
         -o jsonpath="{.items[0].metadata.name}"
         ) && kubectl port-forward ${DAGSTER_WEBSERVER_POD_NAME} {{.DAGSTER_WEBSERVER_PORT}}:80
 
-  push-code-image:
-    desc: Push the code image to Docker Hub
+  create-venv-dagster-dev:
+    desc: Create the Dagster dev virtualenv
     cmds:
-      - docker build -t {{.IMAGE_LOCAL_NAME}} {{.ROOT_DIR}}
-      - docker tag {{.IMAGE_LOCAL_NAME}} {{.IMAGE_REMOTE_NAME}}:{{.IMAGE_REMOTE_TAG}}
-      - docker push {{.IMAGE_REMOTE_NAME}}:{{.IMAGE_REMOTE_TAG}}
+      - virtualenv {{.ROOT_DIR}}/{{.VENV_NAME}}
+      - "{{.ROOT_DIR}}/{{.VENV_NAME}}/bin/pip install -U -e {{.ROOT_DIR}}/moderate[dev]"
+
+  dagster-dev:
+    desc: Run the Dagster dev CLI
+    deps:
+      - compose-up
+      - create-venv-dagster-dev
+    env:
+      KEYCLOAK_SERVER_URL: http://localhost:8080/
+      KEYCLOAK_ADMIN_USERNAME: "{{.KEYCLOAK_ADMIN}}"
+      KEYCLOAK_ADMIN_PASSWORD: "{{.KEYCLOAK_ADMIN_PASSWORD}}"
+    cmds:
+      - cd {{.ROOT_DIR}}/moderate && {{.ROOT_DIR}}/{{.VENV_NAME}}/bin/dagster dev

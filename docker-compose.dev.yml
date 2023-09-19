@@ -1,13 +1,39 @@
 services:
   postgres:
     image: postgres:14
+    restart: on-failure
     ports:
-      - "5432:5432"
+      - 5432:5432
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./scripts/:/docker-entrypoint-initdb.d/
+  keycloak:
+    image: quay.io/keycloak/keycloak:22.0
+    restart: on-failure
+    command: ["start-dev"]
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_PROXY: edge
+      KC_LOG_CONSOLE_COLOR: "true"
+      KC_LOG_LEVEL: debug
+      KC_DB: postgres
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_DB_URL_PORT: 5432
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_URL_HOST: postgres
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      PROXY_ADDRESS_FORWARDING: "true"
+    ports:
+      - 8080:8080
+    depends_on:
+      - postgres
 volumes:
   postgres_data: {}
