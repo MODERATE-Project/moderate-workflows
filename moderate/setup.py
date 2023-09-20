@@ -11,8 +11,9 @@ setup(
         f"dagster=={_VERSION_DAGSTER}",
         f"dagster-postgres=={_VERSION_DAGSTER_EXT}",
         f"dagster-k8s=={_VERSION_DAGSTER_EXT}",
-        "pandas==2.0.3",
+        "pandas[postgresql]==2.0.3",
         "python-keycloak==2.16.1",
+        "sh==2.0.6",
     ],
     extras_require={
         "dev": [

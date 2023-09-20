@@ -48,12 +48,18 @@ tasks:
 
   build-dagster-secrets-envfile:
     desc: Build the Dagster secrets envfile
+    vars:
+      SECRETS_PATH: "{{.ROOT_DIR}}/{{.SECRETS_ENV_FILE}}"
     cmds:
       - cmd: rm {{.ROOT_DIR}}/{{.SECRETS_ENV_FILE}}
         ignore_error: true
-      - echo "KEYCLOAK_SERVER_URL=http://host.docker.internal:8080/" >> {{.ROOT_DIR}}/{{.SECRETS_ENV_FILE}}
-      - echo "KEYCLOAK_ADMIN_USERNAME={{.KEYCLOAK_ADMIN}}" >> {{.ROOT_DIR}}/{{.SECRETS_ENV_FILE}}
-      - echo "KEYCLOAK_ADMIN_PASSWORD={{.KEYCLOAK_ADMIN_PASSWORD}}" >> {{.ROOT_DIR}}/{{.SECRETS_ENV_FILE}}
+      - echo "KEYCLOAK_SERVER_URL=http://host.docker.internal:8080/" >> {{.SECRETS_PATH}}
+      - echo "KEYCLOAK_ADMIN_USERNAME={{.KEYCLOAK_ADMIN}}" >> {{.SECRETS_PATH}}
+      - echo "KEYCLOAK_ADMIN_PASSWORD={{.KEYCLOAK_ADMIN_PASSWORD}}" >> {{.SECRETS_PATH}}
+      - echo "POSTGRES_HOST=host.docker.internal" >> {{.SECRETS_PATH}}
+      - echo "POSTGRES_PORT=5432" >> {{.SECRETS_PATH}}
+      - echo "POSTGRES_USERNAME={{.POSTGRES_USER}}" >> {{.SECRETS_PATH}}
+      - echo "POSTGRES_PASSWORD={{.POSTGRES_PASSWORD}}" >> {{.SECRETS_PATH}}
 
   create-dagster-secrets:
     desc: Create the Dagster secrets
@@ -113,5 +119,9 @@ tasks:
       KEYCLOAK_SERVER_URL: http://localhost:8080/
       KEYCLOAK_ADMIN_USERNAME: "{{.KEYCLOAK_ADMIN}}"
       KEYCLOAK_ADMIN_PASSWORD: "{{.KEYCLOAK_ADMIN_PASSWORD}}"
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_USERNAME: "{{.POSTGRES_USER}}"
+      POSTGRES_PASSWORD: "{{.POSTGRES_PASSWORD}}"
     cmds:
       - cd {{.ROOT_DIR}}/moderate && {{.ROOT_DIR}}/{{.VENV_NAME}}/bin/dagster dev

@@ -1,5 +1,7 @@
+import sqlalchemy.exc
 from dagster import ConfigurableResource, get_dagster_logger
 from keycloak import KeycloakAdmin, KeycloakOpenIDConnection
+from sqlalchemy import Engine, create_engine, text
 
 
 class KeycloakResource(ConfigurableResource):
@@ -28,3 +30,30 @@ class KeycloakResource(ConfigurableResource):
 
     def get_users_count(self) -> int:
         return self.keycloak_admin.users_count()
+
+
+class PostgresResource(ConfigurableResource):
+    host: str
+    port: int
+    username: str
+    password: str
+
+    def postgres_url(self, db_name=None) -> str:
+        url = f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}"
+
+        if db_name:
+            url += f"/{db_name}"
+
+        return url
+
+    def create_engine(self, db_name=None, **kwargs) -> Engine:
+        return create_engine(self.postgres_url(db_name=db_name), **kwargs)
+
+    def create_database(self, name: str):
+        logger = get_dagster_logger()
+
+        try:
+            with self.create_engine(isolation_level="AUTOCOMMIT").connect() as conn:
+                conn.execute(text(f"CREATE DATABASE {name}"))
+        except sqlalchemy.exc.ProgrammingError:
+            logger.info("Database %s already exists", name)
