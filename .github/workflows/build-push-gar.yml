@@ -1,0 +1,18 @@
+name: Build and push an image to Google Artifact Registry (GAR)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  call-build-push-artifact-registry:
+    uses: MODERATE-Project/moderate-docs/.github/workflows/reusable-build-push-gar.yml@main
+    with:
+      project_id: ${{ vars.DEFAULT_GAR_PROJECT_ID }}
+      gar_location: ${{ vars.DEFAULT_GAR_LOCATION }}
+      gar_repo: ${{ vars.DEFAULT_GAR_REPOSITORY }}
+      image_name: moderate-workflows
+    secrets:
+      wif_provider: ${{ secrets.WIF_PROVIDER }}
+      wif_service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
