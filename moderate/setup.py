@@ -14,12 +14,14 @@ setup(
         "pandas[postgresql]==2.0.3",
         "python-keycloak==2.16.1",
         "sh==2.0.6",
+        "openmetadata-ingestion[postgres]==1.1.5.0",
+        "SQLAlchemy>=1.4,<1.5",
     ],
     extras_require={
         "dev": [
             f"dagster-webserver=={_VERSION_DAGSTER}",
-            "pytest==7.4.2",
-            "black==23.9.1",
+            "pytest",
+            "black",
         ]
     },
 )

@@ -1,0 +1,42 @@
+openmetadata:
+  config:
+    logLevel: ${OPEN_METADATA_LOG_LEVEL}
+    elasticsearch:
+      host: ${ELASTIC_HOST}
+      searchType: elasticsearch
+      port: ${ELASTIC_PORT}
+      scheme: http
+      trustStore:
+        enabled: false
+      auth:
+        enabled: false
+    database:
+      host: ${POSTGRES_OPEN_METADATA_HOST}
+      port: ${POSTGRES_OPEN_METADATA_PORT}
+      driverClass: org.postgresql.Driver
+      dbScheme: postgresql
+      dbUseSSL: false
+      databaseName: ${POSTGRES_OPEN_METADATA_DBNAME}
+      auth:
+        username: ${POSTGRES_OPEN_METADATA_USER}
+        password:
+          secretRef: openmetadata-postgres-secrets
+          secretKey: openmetadata-postgres-password
+    pipelineServiceClientConfig:
+      enabled: false
+    authentication:
+      enableSelfSignup: false
+    jwtTokenConfiguration:
+      enabled: true
+      rsapublicKeyFilePath: "/etc/openmetadata/jwtkeys/${OPEN_METADATA_PUBKEY}"
+      rsaprivateKeyFilePath: "/etc/openmetadata/jwtkeys/${OPEN_METADATA_PRIVKEY}"
+      jwtissuer: "ctic.es"
+      keyId: "Gb389a-9f76-gdjs-a92j-0242bk94356"
+extraVolumes:
+  - name: openmetadata-jwt-vol
+    secret:
+      secretName: openmetadata-jwt-keys
+extraVolumeMounts:
+  - name: openmetadata-jwt-vol
+    mountPath: "/etc/openmetadata/jwtkeys"
+    readOnly: true

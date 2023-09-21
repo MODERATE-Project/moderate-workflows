@@ -5,12 +5,20 @@ vars:
   MINIKUBE_CPU: 2
   DAGSTER_CHART_VERSION: 1.4.14
   DAGSTER_WEBSERVER_PORT: 8181
+  OPEN_METADATA_CHART_VERSION: 1.1.12
   IMAGE_LOCAL_NAME: moderate-dagster
   IMAGE_REMOTE_NAME: agmangas/moderate-dagster
   IMAGE_REMOTE_TAG: latest
   VENV_NAME: .venv
   SECRETS_ENV_FILE: dagster-secrets.env
   SECRETS_NAME: dagster-secrets
+  VALUES_DAGSTER_TMPL: values-dagster.yaml.template
+  VALUES_DAGSTER: values-dagster.yaml
+  VALUES_OPEN_METADATA_TMPL: values-openmetadata.yaml.template
+  VALUES_OPEN_METADATA: values-openmetadata.yaml
+  OPEN_METADATA_PRIVKEY: om_privkey.der
+  OPEN_METADATA_PUBKEY: om_pubkey.der
+  OPEN_METADATA_PEM_PRIVKEY: om_privkey.pem
 
 env:
   IMAGE_REMOTE_NAME: "{{.IMAGE_REMOTE_NAME}}"
@@ -24,9 +32,17 @@ tasks:
     cmds:
       - minikube delete
       - docker compose -f {{.ROOT_DIR}}/docker-compose.dev.yml down
-      - cmd: rm values.dev.yaml
+      - cmd: rm {{.ROOT_DIR}}/{{.VALUES_DAGSTER}}
+        ignore_error: true
+      - cmd: rm {{.ROOT_DIR}}/{{.VALUES_OPEN_METADATA}}
         ignore_error: true
       - cmd: rm {{.ROOT_DIR}}/{{.SECRETS_ENV_FILE}}
+        ignore_error: true
+      - cmd: rm {{.ROOT_DIR}}/{{.OPEN_METADATA_PRIVKEY}}
+        ignore_error: true
+      - cmd: rm {{.ROOT_DIR}}/{{.OPEN_METADATA_PUBKEY}}
+        ignore_error: true
+      - cmd: rm {{.ROOT_DIR}}/{{.OPEN_METADATA_PEM_PRIVKEY}}
         ignore_error: true
 
   compose-up:
@@ -41,10 +57,21 @@ tasks:
     status:
       - minikube status
 
-  build-helm-values:
-    desc: Build the Helm values file
+  gen-open-metadata-keypair:
+    desc: Generate the Open Metadata keypair
     cmds:
-      - envsubst < {{.ROOT_DIR}}/values.dev.yaml.template > {{.ROOT_DIR}}/values.dev.yaml
+      - openssl genrsa -out {{.ROOT_DIR}}/{{.OPEN_METADATA_PEM_PRIVKEY}} 2048
+      - >
+        openssl pkcs8 -topk8 -inform PEM -outform DER
+        -in {{.ROOT_DIR}}/{{.OPEN_METADATA_PEM_PRIVKEY}}
+        -out {{.ROOT_DIR}}/{{.OPEN_METADATA_PRIVKEY}} -nocrypt
+      - >
+        openssl rsa
+        -in {{.ROOT_DIR}}/{{.OPEN_METADATA_PEM_PRIVKEY}}
+        -pubout -outform DER
+        -out {{.ROOT_DIR}}/{{.OPEN_METADATA_PUBKEY}}
+    status:
+      - test -f {{.ROOT_DIR}}/{{.OPEN_METADATA_PRIVKEY}}
 
   build-dagster-secrets-envfile:
     desc: Build the Dagster secrets envfile
@@ -59,24 +86,76 @@ tasks:
       - echo "POSTGRES_HOST=host.docker.internal" >> {{.SECRETS_PATH}}
       - echo "POSTGRES_PORT=5432" >> {{.SECRETS_PATH}}
       - echo "POSTGRES_USERNAME={{.POSTGRES_USER}}" >> {{.SECRETS_PATH}}
-      - echo "POSTGRES_PASSWORD={{.POSTGRES_PASSWORD}}" >> {{.SECRETS_PATH}}
+      - echo "OPEN_METADATA_HOST=host.docker.internal" >> {{.SECRETS_PATH}}
+      - echo "OPEN_METADATA_PORT=8585" >> {{.SECRETS_PATH}}
+      # ToDo: Retrieve the token programmatically
+      - echo "OPEN_METADATA_TOKEN={{.OPEN_METADATA_TOKEN}}" >> {{.SECRETS_PATH}}
 
   create-dagster-secrets:
-    desc: Create the Dagster secrets
+    desc: Create the Dagster Kubernetes secrets
     deps:
       - build-dagster-secrets-envfile
     cmds:
       - kubectl create secret generic {{.SECRETS_NAME}} --from-env-file={{.ROOT_DIR}}/{{.SECRETS_ENV_FILE}}
 
+  create-open-metadata-secrets:
+    desc: Create the Open Metadata Kubernetes secrets
+    deps:
+      - gen-open-metadata-keypair
+    cmds:
+      - cmd: >
+          kubectl create secret generic
+          openmetadata-postgres-secrets
+          --from-literal=openmetadata-postgres-password={{.POSTGRES_PASSWORD}}
+        ignore_error: true
+      - cmd: >
+          kubectl create secret generic
+          openmetadata-jwt-keys
+          --from-file {{.ROOT_DIR}}/{{.OPEN_METADATA_PRIVKEY}}
+          --from-file {{.ROOT_DIR}}/{{.OPEN_METADATA_PUBKEY}}
+        ignore_error: true
+
+  build-helm-values:
+    desc: Build the Helm values file for Dagster
+    env:
+      ELASTIC_HOST: host.docker.internal
+      ELASTIC_PORT: 9200
+      POSTGRES_OPEN_METADATA_HOST: host.docker.internal
+      POSTGRES_OPEN_METADATA_PORT: 5432
+      POSTGRES_OPEN_METADATA_DBNAME: "{{.OPEN_METADATA_POSTGRES_DB}}"
+      POSTGRES_OPEN_METADATA_USER: "{{.POSTGRES_USER}}"
+      POSTGRES_OPEN_METADATA_PASSWORD: "{{.POSTGRES_PASSWORD}}"
+      OPEN_METADATA_PUBKEY: "{{.OPEN_METADATA_PUBKEY}}"
+      OPEN_METADATA_PRIVKEY: "{{.OPEN_METADATA_PRIVKEY}}"
+    cmds:
+      - envsubst < {{.ROOT_DIR}}/{{.VALUES_DAGSTER_TMPL}} > {{.ROOT_DIR}}/{{.VALUES_DAGSTER}}
+      - envsubst < {{.ROOT_DIR}}/{{.VALUES_OPEN_METADATA_TMPL}} > {{.ROOT_DIR}}/{{.VALUES_OPEN_METADATA}}
+
   install-helm-dagster:
     desc: Install Dagster Helm chart
+    deps:
+      - build-helm-values
+      - minikube-start
     cmds:
+      - task: create-dagster-secrets
       - helm repo add dagster https://dagster-io.github.io/helm
-      - task: build-helm-values
       - >
         helm upgrade --install dagster dagster/dagster 
-        --version {{.DAGSTER_CHART_VERSION}} 
-        -f {{.ROOT_DIR}}/values.dev.yaml
+        --version {{.DAGSTER_CHART_VERSION}}
+        -f {{.ROOT_DIR}}/{{.VALUES_DAGSTER}}
+
+  install-helm-open-metadata:
+    desc: Install Open Metadata Helm chart
+    deps:
+      - build-helm-values
+      - minikube-start
+    cmds:
+      - task: create-open-metadata-secrets
+      - helm repo add open-metadata https://helm.open-metadata.org/
+      - >
+        helm upgrade --install openmetadata open-metadata/openmetadata
+        --version {{.OPEN_METADATA_CHART_VERSION}}
+        -f {{.ROOT_DIR}}/{{.VALUES_OPEN_METADATA}}
 
   push-code-image:
     desc: Push the code image to Docker Hub
@@ -91,8 +170,8 @@ tasks:
       - task: push-code-image
       - task: compose-up
       - task: minikube-start
-      - task: create-dagster-secrets
       - task: install-helm-dagster
+      - task: install-helm-open-metadata
 
   forward-k8s-dagster-webserver:
     desc: Forward the Dagster Webserver port
@@ -123,5 +202,9 @@ tasks:
       POSTGRES_PORT: 5432
       POSTGRES_USERNAME: "{{.POSTGRES_USER}}"
       POSTGRES_PASSWORD: "{{.POSTGRES_PASSWORD}}"
+      OPEN_METADATA_HOST: localhost
+      OPEN_METADATA_PORT: 8585
+      # ToDo: Retrieve the token programmatically
+      OPEN_METADATA_TOKEN: "{{.OPEN_METADATA_TOKEN}}"
     cmds:
       - cd {{.ROOT_DIR}}/moderate && {{.ROOT_DIR}}/{{.VENV_NAME}}/bin/dagster dev

@@ -2,8 +2,11 @@
 ##########
 
 moderate/tmp*
-values.dev.yaml
 *-secrets.env
+values-*.yaml
+!*.yaml.template
+om*.pem
+om*.der
 
 ## Python
 #########

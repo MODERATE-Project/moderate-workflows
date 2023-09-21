@@ -1,7 +1,8 @@
 import sqlalchemy.exc
 from dagster import ConfigurableResource, get_dagster_logger
 from keycloak import KeycloakAdmin, KeycloakOpenIDConnection
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine.base import Engine
 
 
 class KeycloakResource(ConfigurableResource):
@@ -57,3 +58,18 @@ class PostgresResource(ConfigurableResource):
                 conn.execute(text(f"CREATE DATABASE {name}"))
         except sqlalchemy.exc.ProgrammingError:
             logger.info("Database %s already exists", name)
+
+
+class OpenMetadataResource(ConfigurableResource):
+    host: str
+    port: int
+    token: str
+    use_ssl: bool = False
+
+    @property
+    def host_port(self) -> str:
+        return "{}://{}:{}/api".format(
+            "https" if self.use_ssl else "http",
+            self.host,
+            self.port,
+        )

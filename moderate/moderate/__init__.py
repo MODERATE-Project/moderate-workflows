@@ -3,12 +3,14 @@ import enum
 from dagster import Definitions, EnvVar, load_assets_from_modules
 
 import moderate.assets
+import moderate.openmetadata.assets
 import moderate.resources
 
 
 class ResourceNames(enum.Enum):
     KEYCLOAK = "keycloak"
     POSTGRES = "postgres"
+    OPEN_METADATA = "open_metadata"
 
 
 class Variables(enum.Enum):
@@ -19,9 +21,12 @@ class Variables(enum.Enum):
     POSTGRES_PORT = "POSTGRES_PORT"
     POSTGRES_USERNAME = "POSTGRES_USERNAME"
     POSTGRES_PASSWORD = "POSTGRES_PASSWORD"
+    OPEN_METADATA_HOST = "OPEN_METADATA_HOST"
+    OPEN_METADATA_PORT = "OPEN_METADATA_PORT"
+    OPEN_METADATA_TOKEN = "OPEN_METADATA_TOKEN"
 
 
-all_assets = load_assets_from_modules([moderate.assets])
+all_assets = load_assets_from_modules([moderate.assets, moderate.openmetadata.assets])
 
 defs = Definitions(
     assets=all_assets,
@@ -36,6 +41,11 @@ defs = Definitions(
             port=EnvVar.int(Variables.POSTGRES_PORT.value),
             username=EnvVar(Variables.POSTGRES_USERNAME.value),
             password=EnvVar(Variables.POSTGRES_PASSWORD.value),
+        ),
+        ResourceNames.OPEN_METADATA.value: moderate.resources.OpenMetadataResource(
+            host=EnvVar(Variables.OPEN_METADATA_HOST.value),
+            port=EnvVar.int(Variables.OPEN_METADATA_PORT.value),
+            token=EnvVar(Variables.OPEN_METADATA_TOKEN.value),
         ),
     },
 )
