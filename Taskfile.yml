@@ -224,7 +224,8 @@ tasks:
     env:
       SECRET_NAME: "{{.SECRETS_NAME}}"
       NAMESPACE: default
-      DEPLOYMENT_NAME: openmetadata
+      DAGSTER_RELEASE: dagster
+      DAGSTER_CHART: dagster/dagster
     cmds:
       - "{{.ROOT_DIR}}/scripts/update-open-metadata-secret.sh"
     preconditions:
