@@ -111,8 +111,11 @@ def building_stock_datasets(
             pass
 
 
+TABLE_BUILDING_STOCK = "building_stock_analysis"
+
+
 class BuildingStockTablesConfig(Config):
-    database: str = "building_stock_analysis"
+    database: str = TABLE_BUILDING_STOCK
 
 
 @asset

@@ -63,7 +63,6 @@ class PostgresResource(ConfigurableResource):
 class OpenMetadataResource(ConfigurableResource):
     host: str
     port: int
-    token: str
     use_ssl: bool = False
 
     @property

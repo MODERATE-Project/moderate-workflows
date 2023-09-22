@@ -6,6 +6,7 @@ vars:
   DAGSTER_CHART_VERSION: 1.4.14
   DAGSTER_WEBSERVER_PORT: 8181
   OPEN_METADATA_CHART_VERSION: 1.1.12
+  OPEN_METADATA_UI_PORT: 8585
   IMAGE_LOCAL_NAME: moderate-dagster
   IMAGE_REMOTE_NAME: agmangas/moderate-dagster
   IMAGE_REMOTE_TAG: latest
@@ -86,10 +87,9 @@ tasks:
       - echo "POSTGRES_HOST=host.docker.internal" >> {{.SECRETS_PATH}}
       - echo "POSTGRES_PORT=5432" >> {{.SECRETS_PATH}}
       - echo "POSTGRES_USERNAME={{.POSTGRES_USER}}" >> {{.SECRETS_PATH}}
+      - echo "POSTGRES_PASSWORD={{.POSTGRES_PASSWORD}}" >> {{.SECRETS_PATH}}
       - echo "OPEN_METADATA_HOST=host.docker.internal" >> {{.SECRETS_PATH}}
       - echo "OPEN_METADATA_PORT=8585" >> {{.SECRETS_PATH}}
-      # ToDo: Retrieve the token programmatically
-      - echo "OPEN_METADATA_TOKEN={{.OPEN_METADATA_TOKEN}}" >> {{.SECRETS_PATH}}
 
   create-dagster-secrets:
     desc: Create the Dagster Kubernetes secrets
@@ -173,7 +173,7 @@ tasks:
       - task: install-helm-dagster
       - task: install-helm-open-metadata
 
-  forward-k8s-dagster-webserver:
+  forward-k8s-dagster-ui:
     desc: Forward the Dagster Webserver port
     cmds:
       - >
@@ -182,6 +182,16 @@ tasks:
         -l "component=dagster-webserver" 
         -o jsonpath="{.items[0].metadata.name}"
         ) && kubectl port-forward ${DAGSTER_WEBSERVER_POD_NAME} {{.DAGSTER_WEBSERVER_PORT}}:80
+
+  forward-k8s-open-metadata-ui:
+    desc: Forward the Open Metadata UI port
+    cmds:
+      - >
+        OPEN_METADATA_UI_POD_NAME=$(
+        kubectl get pods --namespace default
+        -l "app.kubernetes.io/name=openmetadata,app.kubernetes.io/instance=openmetadata"
+        -o jsonpath="{.items[0].metadata.name}"
+        ) && kubectl port-forward ${OPEN_METADATA_UI_POD_NAME} {{.OPEN_METADATA_UI_PORT}}:8585
 
   create-venv-dagster-dev:
     desc: Create the Dagster dev virtualenv
@@ -204,7 +214,5 @@ tasks:
       POSTGRES_PASSWORD: "{{.POSTGRES_PASSWORD}}"
       OPEN_METADATA_HOST: localhost
       OPEN_METADATA_PORT: 8585
-      # ToDo: Retrieve the token programmatically
-      OPEN_METADATA_TOKEN: "{{.OPEN_METADATA_TOKEN}}"
     cmds:
       - cd {{.ROOT_DIR}}/moderate && {{.ROOT_DIR}}/{{.VENV_NAME}}/bin/dagster dev
