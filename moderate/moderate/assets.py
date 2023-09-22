@@ -124,7 +124,7 @@ def building_stock_tables(
     config: BuildingStockTablesConfig,
     postgres: PostgresResource,
     building_stock_datasets: Dict[BuildingStockDatasets, pd.DataFrame],
-):
+) -> None:
     """Creates the building stock tables in the Postgres database."""
 
     logger = get_dagster_logger()
