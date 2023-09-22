@@ -31,6 +31,7 @@ def keycloak_users_count(
 
 class BuildingStockDatasetsConfig(Config):
     git_url: str = "https://github.com/MODERATE-Project/building-stock-analysis.git"
+    commit_sha: str = "ae63ae3f35ba44c4fde46998af7b4e19621ecf81"
 
 
 class BuildingStockDatasets(enum.Enum):
@@ -51,6 +52,8 @@ def building_stock_datasets(
 
     try:
         git.clone(config.git_url, git_dir)
+        logger.info("Checking out commit %s", config.commit_sha)
+        git.reset("--hard", config.commit_sha, _cwd=git_dir)
 
         csv_paths = {
             BuildingStockDatasets.T31_EPC_CLASSIFICATION: os.path.join(
