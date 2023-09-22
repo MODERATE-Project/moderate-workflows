@@ -216,3 +216,16 @@ tasks:
       OPEN_METADATA_PORT: 8585
     cmds:
       - cd {{.ROOT_DIR}}/moderate && {{.ROOT_DIR}}/{{.VENV_NAME}}/bin/dagster dev
+
+  update-k8s-open-metadata-token:
+    desc: Update the Open Metadata token in the Dagster Kubernetes secret
+    requires:
+      vars: [OPEN_METADATA_TOKEN]
+    env:
+      SECRET_NAME: "{{.SECRETS_NAME}}"
+      NAMESPACE: default
+      DEPLOYMENT_NAME: openmetadata
+    cmds:
+      - "{{.ROOT_DIR}}/scripts/update-open-metadata-secret.sh"
+    preconditions:
+      - context=$(kubectl config current-context) && [[ $context == "minikube" ]]

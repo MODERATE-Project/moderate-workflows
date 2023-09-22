@@ -11,23 +11,6 @@ from moderate.openmetadata.configs.postgres import (
 from moderate.resources import OpenMetadataResource, PostgresResource
 
 
-class OpenMetadataAuthConfig(Config):
-    # The token needs to be retrieved manually because Open Metadata
-    # does not seem to provide any way to retrieve it programmatically:
-    # https://docs.open-metadata.org/v1.1.x/deployment/security/enable-jwt-tokens#generate-token
-    token: str
-
-
-@asset
-def open_metadata_token(config: OpenMetadataAuthConfig) -> str:
-    """Returns the Open Metadata token.
-    This is a workaround because Open Metadata does not
-    seem to provide any way to retrieve it programmatically."""
-
-    # ToDo: This should be encrypted on disk
-    return config.token
-
-
 class PostgresIngestionConfig(Config):
     source_service_name: str = "platform-postgres"
     default_dbname: str = TABLE_BUILDING_STOCK
@@ -38,7 +21,6 @@ def postgres_metadata_ingestion(
     config: PostgresIngestionConfig,
     postgres: PostgresResource,
     open_metadata: OpenMetadataResource,
-    open_metadata_token: str,
 ) -> None:
     """Ingests metadata from Postgres into Open Metadata."""
 
@@ -52,7 +34,7 @@ def postgres_metadata_ingestion(
         postgres_port=postgres.port,
         postgres_db=config.default_dbname,
         open_metadata_host_port=open_metadata.host_port,
-        open_metadata_token=open_metadata_token,
+        open_metadata_token=open_metadata.token,
     )
 
     logger.debug(
@@ -64,7 +46,6 @@ def postgres_metadata_ingestion(
 
 @asset(deps=[postgres_metadata_ingestion])
 def postgres_profiler_ingestion(
-    open_metadata_token: str,
     config: PostgresIngestionConfig,
     open_metadata: OpenMetadataResource,
 ) -> None:
@@ -75,7 +56,7 @@ def postgres_profiler_ingestion(
     workflow_config = build_profiler_config(
         source_service_name=config.source_service_name,
         open_metadata_host_port=open_metadata.host_port,
-        open_metadata_token=open_metadata_token,
+        open_metadata_token=open_metadata.token,
     )
 
     logger.debug(
@@ -88,7 +69,6 @@ def postgres_profiler_ingestion(
 postgres_ingestion_job = define_asset_job(
     name="postgres_ingestion_job",
     selection=[
-        open_metadata_token,
         postgres_metadata_ingestion,
         postgres_profiler_ingestion,
     ],

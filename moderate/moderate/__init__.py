@@ -23,6 +23,7 @@ class Variables(enum.Enum):
     POSTGRES_PASSWORD = "POSTGRES_PASSWORD"
     OPEN_METADATA_HOST = "OPEN_METADATA_HOST"
     OPEN_METADATA_PORT = "OPEN_METADATA_PORT"
+    OPEN_METADATA_TOKEN = "OPEN_METADATA_TOKEN"
 
 
 all_assets = load_assets_from_modules([moderate.assets, moderate.openmetadata.assets])
@@ -44,6 +45,7 @@ defs = Definitions(
         ResourceNames.OPEN_METADATA.value: moderate.resources.OpenMetadataResource(
             host=EnvVar(Variables.OPEN_METADATA_HOST.value),
             port=EnvVar.int(Variables.OPEN_METADATA_PORT.value),
+            token=EnvVar(Variables.OPEN_METADATA_TOKEN.value),
         ),
     },
     jobs=[moderate.openmetadata.assets.postgres_ingestion_job],

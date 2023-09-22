@@ -64,6 +64,7 @@ class OpenMetadataResource(ConfigurableResource):
     host: str
     port: int
     use_ssl: bool = False
+    token: str
 
     @property
     def host_port(self) -> str:
