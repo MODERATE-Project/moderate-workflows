@@ -16,6 +16,7 @@ setup(
         "sh==2.0.6",
         "openmetadata-ingestion[postgres]==1.1.5.0",
         "SQLAlchemy>=1.4,<1.5",
+        "PyYAML==6.0.1",
     ],
     extras_require={
         "dev": [
