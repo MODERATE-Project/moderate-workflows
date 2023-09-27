@@ -31,7 +31,7 @@ def keycloak_users_count(
 
 class BuildingStockDatasetsConfig(Config):
     git_url: str = "https://github.com/MODERATE-Project/building-stock-analysis.git"
-    commit_sha: str = "ae63ae3f35ba44c4fde46998af7b4e19621ecf81"
+    commit_sha: str = "4d3c56980d144d31a8347280e85f8f2b6e3207bb"
 
 
 class BuildingStockDatasets(enum.Enum):
