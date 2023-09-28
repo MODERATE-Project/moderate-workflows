@@ -37,8 +37,8 @@ openmetadata:
       className: org.openmetadata.service.security.DefaultAuthorizer
       containerRequestFilter: org.openmetadata.service.security.JwtFilter
       initialAdmins:
-        - admin-user
-      principalDomain: open-metadata.org
+        - admin
+      principalDomain: fundacionctic.org
     jwtTokenConfiguration:
       enabled: true
       rsapublicKeyFilePath: /etc/openmetadata/jwtkeys/${OPEN_METADATA_PUBKEY}
