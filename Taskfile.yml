@@ -144,11 +144,6 @@ tasks:
           --from-file {{.ROOT_DIR}}/{{.OPEN_METADATA_PRIVKEY}}
           --from-file {{.ROOT_DIR}}/{{.OPEN_METADATA_PUBKEY}}
         ignore_error: true
-      - cmd: >
-          kubectl create secret generic
-          custom-oidc-key-secret
-          --from-literal=custom-oidc-key-secret={{.OPEN_METADATA_CLIENT_SECRET}}
-        ignore_error: true
 
   build-helm-values:
     desc: Build the Helm values file for Dagster
