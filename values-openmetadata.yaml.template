@@ -25,18 +25,31 @@ openmetadata:
     pipelineServiceClientConfig:
       enabled: false
     authentication:
+      provider: "custom-oidc"
+      publicKeys:
+        - ${OPEN_METADATA_ROOT_URL}/api/v1/system/config/jwks
+        - ${KEYCLOAK_URL}/realms/${MODERATE_REALM}/protocol/openid-connect/certs
+      authority: ${KEYCLOAK_URL}/realms/${MODERATE_REALM}
+      clientId: ${OPEN_METADATA_CLIENT_ID}
+      callbackUrl: ${OPEN_METADATA_ROOT_URL}/callback
       enableSelfSignup: false
+    authorizer:
+      className: org.openmetadata.service.security.DefaultAuthorizer
+      containerRequestFilter: org.openmetadata.service.security.JwtFilter
+      initialAdmins:
+        - admin-user
+      principalDomain: open-metadata.org
     jwtTokenConfiguration:
       enabled: true
-      rsapublicKeyFilePath: "/etc/openmetadata/jwtkeys/${OPEN_METADATA_PUBKEY}"
-      rsaprivateKeyFilePath: "/etc/openmetadata/jwtkeys/${OPEN_METADATA_PRIVKEY}"
-      jwtissuer: "ctic.es"
-      keyId: "Gb389a-9f76-gdjs-a92j-0242bk94356"
+      rsapublicKeyFilePath: /etc/openmetadata/jwtkeys/${OPEN_METADATA_PUBKEY}
+      rsaprivateKeyFilePath: /etc/openmetadata/jwtkeys/${OPEN_METADATA_PRIVKEY}
+      jwtissuer: ${KEYCLOAK_URL}/realms/${MODERATE_REALM}
+      keyId: 5756d057-114e-4ecb-8b00-afdb4740f47a
 extraVolumes:
   - name: openmetadata-jwt-vol
     secret:
       secretName: openmetadata-jwt-keys
 extraVolumeMounts:
   - name: openmetadata-jwt-vol
-    mountPath: "/etc/openmetadata/jwtkeys"
+    mountPath: /etc/openmetadata/jwtkeys
     readOnly: true
