@@ -5,7 +5,7 @@ vars:
   MINIKUBE_CPU: 2
   DAGSTER_CHART_VERSION: 1.4.14
   DAGSTER_WEBSERVER_PORT: 8181
-  OPEN_METADATA_CHART_VERSION: 1.1.12
+  OPEN_METADATA_CHART_VERSION: 1.1.13
   OPEN_METADATA_UI_PORT: 8585
   IMAGE_LOCAL_NAME: moderate-dagster
   IMAGE_REMOTE_NAME: agmangas/moderate-dagster
@@ -196,12 +196,16 @@ tasks:
 
   start-dev-k8s:
     desc: Start the dev environment in the local Kubernetes cluster
+    vars:
+      WAIT_TIMEOUT_SECS: 600
     cmds:
       - task: push-code-image
       - task: compose-up
       - task: minikube-start
       - task: install-helm-dagster
       - task: install-helm-open-metadata
+      - echo "🕐 Waiting for all pods to be ready (feel free to Ctrl+C)"
+      - kubectl wait --for=condition=Ready pods --all --timeout={{.WAIT_TIMEOUT_SECS}}s
 
   forward-k8s-dagster-ui:
     desc: Forward the Dagster Webserver port
