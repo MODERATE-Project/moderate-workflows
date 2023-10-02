@@ -20,7 +20,7 @@ vars:
   OPEN_METADATA_PRIVKEY: om_privkey.der
   OPEN_METADATA_PUBKEY: om_pubkey.der
   OPEN_METADATA_PEM_PRIVKEY: om_privkey.pem
-  MODERATE_CLI_IMAGE: docker.io/agmangas/moderate-cli:0.2.3
+  MODERATE_CLI_IMAGE: docker.io/agmangas/moderate-cli:0.2.4
   KEYCLOAK_INIT_SLEEP_SECONDS: 40
   MAIN_IP_ADDRESS:
     sh: ip route get 1.2.3.4 | awk '{print $7}'
