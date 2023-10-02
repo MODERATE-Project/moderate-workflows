@@ -14,7 +14,7 @@ setup(
         "pandas[postgresql]==2.0.3",
         "python-keycloak==2.16.1",
         "sh==2.0.6",
-        "openmetadata-ingestion[postgres]==1.1.5.0",
+        "openmetadata-ingestion[postgres]==1.1.6",
         "SQLAlchemy>=1.4,<1.5",
         "PyYAML==6.0.1",
     ],
