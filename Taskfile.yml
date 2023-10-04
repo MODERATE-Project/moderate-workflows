@@ -123,6 +123,7 @@ tasks:
       - echo "POSTGRES_PASSWORD={{.POSTGRES_PASSWORD}}" >> {{.SECRETS_PATH}}
       - echo "OPEN_METADATA_HOST=host.docker.internal" >> {{.SECRETS_PATH}}
       - echo "OPEN_METADATA_PORT=8585" >> {{.SECRETS_PATH}}
+      - echo "OPEN_METADATA_TOKEN=null" >> {{.SECRETS_PATH}}
 
   create-dagster-secrets:
     desc: Create the Dagster Kubernetes secrets

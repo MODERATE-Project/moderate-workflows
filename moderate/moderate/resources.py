@@ -63,13 +63,14 @@ class PostgresResource(ConfigurableResource):
 class OpenMetadataResource(ConfigurableResource):
     host: str
     port: int
-    use_ssl: bool = False
     token: str
 
     @property
-    def host_port(self) -> str:
-        return "{}://{}:{}/api".format(
-            "https" if self.use_ssl else "http",
-            self.host,
-            self.port,
+    def host_port(self, default_https: bool = True) -> str:
+        scheme_host = (
+            self.host
+            if self.host.startswith("http://") or self.host.startswith("https://")
+            else "{}://{}".format("https" if default_https else "http", self.host)
         )
+
+        return "{}:{}/api".format(scheme_host, self.port)
