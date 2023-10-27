@@ -40,7 +40,7 @@ tasks:
     desc: Clean up the dev environment
     cmds:
       - minikube delete
-      - docker compose -f {{.ROOT_DIR}}/docker-compose.dev.yml down
+      - docker compose -f {{.ROOT_DIR}}/docker-compose.dev.yml down -v
       - cmd: rm {{.ROOT_DIR}}/{{.VALUES_DAGSTER}}
         ignore_error: true
       - cmd: rm {{.ROOT_DIR}}/{{.VALUES_OPEN_METADATA}}
@@ -53,6 +53,17 @@ tasks:
         ignore_error: true
       - cmd: rm {{.ROOT_DIR}}/{{.OPEN_METADATA_PEM_PRIVKEY}}
         ignore_error: true
+
+  show-env:
+    silent: true
+    cmds:
+      - for:
+          - MAIN_IP_ADDRESS
+          - OPEN_METADATA_ROOT_URL
+          - KEYCLOAK_URL
+          - OPEN_METADATA_ROOT_URL
+          - KEYCLOAK_URL
+        cmd: 'echo -e "{{.ITEM}} = {{index . .ITEM}}"'
 
   moderate-cli-init-keycloak:
     desc: Create the Keycloak entities using the MODERATE CLI
