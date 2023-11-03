@@ -1,32 +1,16 @@
-import enum
+import os
 
 from dagster import Definitions, EnvVar, load_assets_from_modules
 
 import moderate.assets
 import moderate.openmetadata.assets
 import moderate.resources
+import moderate.trust
+from moderate.enums import ResourceNames, VariableDefaults, Variables
 
-
-class ResourceNames(enum.Enum):
-    KEYCLOAK = "keycloak"
-    POSTGRES = "postgres"
-    OPEN_METADATA = "open_metadata"
-
-
-class Variables(enum.Enum):
-    KEYCLOAK_SERVER_URL = "KEYCLOAK_SERVER_URL"
-    KEYCLOAK_ADMIN_USERNAME = "KEYCLOAK_ADMIN_USERNAME"
-    KEYCLOAK_ADMIN_PASSWORD = "KEYCLOAK_ADMIN_PASSWORD"
-    POSTGRES_HOST = "POSTGRES_HOST"
-    POSTGRES_PORT = "POSTGRES_PORT"
-    POSTGRES_USERNAME = "POSTGRES_USERNAME"
-    POSTGRES_PASSWORD = "POSTGRES_PASSWORD"
-    OPEN_METADATA_HOST = "OPEN_METADATA_HOST"
-    OPEN_METADATA_PORT = "OPEN_METADATA_PORT"
-    OPEN_METADATA_TOKEN = "OPEN_METADATA_TOKEN"
-
-
-all_assets = load_assets_from_modules([moderate.assets, moderate.openmetadata.assets])
+all_assets = load_assets_from_modules(
+    [moderate.assets, moderate.openmetadata.assets, moderate.trust]
+)
 
 defs = Definitions(
     assets=all_assets,
@@ -35,6 +19,10 @@ defs = Definitions(
             server_url=EnvVar(Variables.KEYCLOAK_SERVER_URL.value),
             admin_username=EnvVar(Variables.KEYCLOAK_ADMIN_USERNAME.value),
             admin_password=EnvVar(Variables.KEYCLOAK_ADMIN_PASSWORD.value),
+            main_realm_name=os.getenv(
+                Variables.KEYCLOAK_MAIN_REALM_NAME.value,
+                VariableDefaults.KEYCLOAK_MAIN_REALM_NAME.value,
+            ),
         ),
         ResourceNames.POSTGRES.value: moderate.resources.PostgresResource(
             host=EnvVar(Variables.POSTGRES_HOST.value),
@@ -48,5 +36,11 @@ defs = Definitions(
             token=EnvVar(Variables.OPEN_METADATA_TOKEN.value),
         ),
     },
-    jobs=[moderate.openmetadata.assets.postgres_ingestion_job],
+    jobs=[
+        moderate.openmetadata.assets.postgres_ingestion_job,
+        moderate.trust.call_trust_services_new_user_job,
+        moderate.trust.call_trust_services_new_asset_job,
+        moderate.trust.verify_asset_trust_services_job,
+    ],
+    sensors=[moderate.trust.keycloak_user_sensor, moderate.trust.data_asset_sensor],
 )

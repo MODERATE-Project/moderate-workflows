@@ -1,3 +1,5 @@
+from typing import Union
+
 import sqlalchemy.exc
 from dagster import ConfigurableResource, get_dagster_logger
 from keycloak import KeycloakAdmin, KeycloakOpenIDConnection
@@ -9,9 +11,9 @@ class KeycloakResource(ConfigurableResource):
     server_url: str
     admin_username: str
     admin_password: str
+    main_realm_name: str
 
-    @property
-    def keycloak_connection(self) -> KeycloakOpenIDConnection:
+    def get_keycloak_connection(self, **kwargs) -> KeycloakOpenIDConnection:
         logger = get_dagster_logger()
 
         keycloak_kwargs = {
@@ -19,18 +21,20 @@ class KeycloakResource(ConfigurableResource):
             "username": self.admin_username,
             "password": self.admin_password,
             "verify": True,
+            "realm_name": self.main_realm_name,
+            "user_realm_name": "master",
         }
 
+        keycloak_kwargs.update(kwargs)
         logger.debug(f"Connecting to Keycloak with {keycloak_kwargs}")
 
         return KeycloakOpenIDConnection(**keycloak_kwargs)
 
-    @property
-    def keycloak_admin(self) -> KeycloakAdmin:
-        return KeycloakAdmin(connection=self.keycloak_connection)
+    def get_keycloak_admin(self, *args, **kwargs) -> KeycloakAdmin:
+        return KeycloakAdmin(connection=self.get_keycloak_connection(*args, **kwargs))
 
     def get_users_count(self) -> int:
-        return self.keycloak_admin.users_count()
+        return self.get_keycloak_admin().users_count()
 
 
 class PostgresResource(ConfigurableResource):
