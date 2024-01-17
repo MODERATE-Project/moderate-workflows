@@ -1,7 +1,7 @@
 from setuptools import find_packages, setup
 
-_VERSION_DAGSTER = "1.4.14"
-_VERSION_DAGSTER_EXT = "0.20.14"
+_VERSION_DAGSTER = "1.6.0"
+_VERSION_DAGSTER_EXT = "0.22.0"
 
 setup(
     name="moderate",
@@ -17,6 +17,7 @@ setup(
         "openmetadata-ingestion[postgres]==1.1.6",
         "SQLAlchemy>=1.4,<1.5",
         "PyYAML==6.0.1",
+        "urllib3<2.0",
     ],
     extras_require={
         "dev": [
