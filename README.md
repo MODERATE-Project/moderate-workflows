@@ -15,9 +15,11 @@ Running `task start-dev-k8s` will do the following:
 * Start Minikube.
 * Install Helm charts for both Dagster and OpenMetadata.
 
+> To make our life easier, we're publishing the Dagster user deployment image to Docker Hub. This is not ideal, but it's a simple way to get the image into our local Kubernetes cluster. In production we use a private registry. There are a couple of `vars` in `Taskfile.yml` that you can use to change the image name, and consequently the user.
+
 Once the task has completed, you can access the OpenMetadata UI and Dagster UI by running `task forward-k8s-open-metadata-ui` and `task forward-k8s-dagster-ui` respectively.
 
-> Please note that due to the particularities of the OpenMetadata OIDC integration with Keycloak, you should access the UIs using your local IP address instead of `localhost`.
+> Due to the particularities of the OpenMetadata OIDC integration with Keycloak, you should access the UIs using your local IP address instead of `localhost`.
 
 #### Create the admin user
 
