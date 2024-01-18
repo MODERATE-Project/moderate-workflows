@@ -23,7 +23,11 @@ Once the task has completed, you can access the OpenMetadata UI and Dagster UI b
 
 Since OpenMetadata is configured to use Keycloak as the OIDC provider, you need to create an admin user in Keycloak in order to be able to log in to OpenMetadata. This can be done in the **Users** section of the Keycloak UI, under the **moderate** realm.
 
-The admin's email address must be one of the values included under `authorizer.initialAdmins` in the OpenMetadata YAML values file. Additionally, the domain must match the value specified in `authorizer.principalDomain` within the same file.
+The admin's email address *local-part* must be one of the values included under `authorizer.initialAdmins` in the OpenMetadata YAML values file. Additionally, the *domain* must match the value specified in `authorizer.principalDomain` within the same file:
+
+```console
+<value-of-initialAdmins>@<principalDomain>
+```
 
 #### Update OpenMetadata token
 
