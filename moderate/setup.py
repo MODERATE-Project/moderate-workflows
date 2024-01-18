@@ -11,13 +11,14 @@ setup(
         f"dagster=={_VERSION_DAGSTER}",
         f"dagster-postgres=={_VERSION_DAGSTER_EXT}",
         f"dagster-k8s=={_VERSION_DAGSTER_EXT}",
-        "pandas[postgresql]==2.0.3",
+        "pandas[postgresql]>=1.3,<2.0",
         "python-keycloak==2.16.1",
         "sh==2.0.6",
-        "openmetadata-ingestion[postgres]==1.1.6",
+        "openmetadata-ingestion[postgres,datalake-s3]==1.2.4.3",
         "SQLAlchemy>=1.4,<1.5",
         "PyYAML==6.0.1",
         "urllib3<2.0",
+        "trino>=0.321.0,<=0.327",
     ],
     extras_require={
         "dev": [

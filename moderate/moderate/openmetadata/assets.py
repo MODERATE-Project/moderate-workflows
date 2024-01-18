@@ -3,7 +3,7 @@ import pprint
 from dagster import Config, asset, define_asset_job, get_dagster_logger
 
 from moderate.assets import TABLE_BUILDING_STOCK, building_stock_tables
-from moderate.openmetadata import run_profiler_workflow, run_workflow
+from moderate.openmetadata import run_profiler_workflow, run_metadata_workflow
 from moderate.openmetadata.configs.postgres import (
     build_database_metadata_config,
     build_profiler_config,
@@ -41,7 +41,7 @@ def postgres_metadata_ingestion(
         "Running metadata ingestion workflow:\n%s", pprint.pformat(workflow_config)
     )
 
-    run_workflow(workflow_config)
+    run_metadata_workflow(workflow_config)
 
 
 @asset(deps=[postgres_metadata_ingestion])

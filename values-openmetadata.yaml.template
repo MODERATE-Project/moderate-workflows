@@ -15,13 +15,13 @@ openmetadata:
       port: ${POSTGRES_OPEN_METADATA_PORT}
       driverClass: org.postgresql.Driver
       dbScheme: postgresql
-      dbUseSSL: false
       databaseName: ${POSTGRES_OPEN_METADATA_DBNAME}
       auth:
         username: ${POSTGRES_OPEN_METADATA_USER}
         password:
           secretRef: openmetadata-postgres-secrets
           secretKey: openmetadata-postgres-password
+      dbParams: "sslmode=disable"
     pipelineServiceClientConfig:
       enabled: false
     authentication:
