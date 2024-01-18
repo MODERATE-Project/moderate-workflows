@@ -6,6 +6,11 @@ from keycloak import KeycloakAdmin, KeycloakOpenIDConnection
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine.base import Engine
 
+_LOCAL_NAMES = [
+    "host.docker.internal",
+    "localhost",
+]
+
 
 class KeycloakResource(ConfigurableResource):
     server_url: str
@@ -71,10 +76,16 @@ class OpenMetadataResource(ConfigurableResource):
 
     @property
     def host_port(self, default_https: bool = True) -> str:
-        scheme_host = (
-            self.host
-            if self.host.startswith("http://") or self.host.startswith("https://")
-            else "{}://{}".format("https" if default_https else "http", self.host)
-        )
+        logger = get_dagster_logger()
 
-        return "{}:{}/api".format(scheme_host, self.port)
+        if self.host.startswith("http://") or self.host.startswith("https://"):
+            scheme_and_host = self.host
+        elif self.host in _LOCAL_NAMES:
+            logger.info("Host seems to be local: using http:// and ignoring kwarg")
+            scheme_and_host = f"http://{self.host}"
+        else:
+            scheme_and_host = "{}://{}".format(
+                "https" if default_https else "http", self.host
+            )
+
+        return "{}:{}/api".format(scheme_and_host, self.port)
