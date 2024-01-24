@@ -5,8 +5,8 @@ from dagster import Config, asset, define_asset_job, get_dagster_logger
 from moderate.assets import TABLE_BUILDING_STOCK, building_stock_tables
 from moderate.openmetadata import run_profiler_workflow, run_metadata_workflow
 from moderate.openmetadata.configs.postgres import (
-    build_database_metadata_config,
-    build_profiler_config,
+    build_postgres_metadata_config,
+    build_postgres_profiler_config,
 )
 from moderate.resources import OpenMetadataResource, PostgresResource
 
@@ -26,7 +26,7 @@ def postgres_metadata_ingestion(
 
     logger = get_dagster_logger()
 
-    workflow_config = build_database_metadata_config(
+    workflow_config = build_postgres_metadata_config(
         source_service_name=config.source_service_name,
         postgres_user=postgres.username,
         postgres_pass=postgres.password,
@@ -53,7 +53,7 @@ def postgres_profiler_ingestion(
 
     logger = get_dagster_logger()
 
-    workflow_config = build_profiler_config(
+    workflow_config = build_postgres_profiler_config(
         source_service_name=config.source_service_name,
         open_metadata_host_port=open_metadata.host_port,
         open_metadata_token=open_metadata.token,

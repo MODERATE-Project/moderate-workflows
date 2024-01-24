@@ -1,4 +1,12 @@
-def build_database_metadata_config(
+"""
+https://docs.open-metadata.org/v1.2.x/connectors/database/postgres/yaml
+"""
+
+
+from moderate.openmetadata.configs.common import build_workflow_config
+
+
+def build_postgres_metadata_config(
     source_service_name: str,
     postgres_user: str,
     postgres_pass: str,
@@ -12,6 +20,7 @@ def build_database_metadata_config(
     include_tables: bool = True,
     include_views: bool = True,
     logger_level: str = "INFO",
+    pipeline_name: str = "metadata",
 ) -> dict:
     data = {
         "source": {
@@ -37,26 +46,28 @@ def build_database_metadata_config(
             },
         },
         "sink": {"type": "metadata-rest", "config": {}},
-        "workflowConfig": {
-            "loggerLevel": logger_level,
-            "openMetadataServerConfig": {
-                "hostPort": open_metadata_host_port,
-                "authProvider": "openmetadata",
-                "securityConfig": {"jwtToken": open_metadata_token},
-            },
-        },
+        "ingestionPipelineFQN": f"{source_service_name}.{pipeline_name}",
     }
+
+    workflow_config = build_workflow_config(
+        logger_level=logger_level,
+        open_metadata_host_port=open_metadata_host_port,
+        open_metadata_token=open_metadata_token,
+    )
+
+    data.update(workflow_config)
 
     return data
 
 
-def build_profiler_config(
+def build_postgres_profiler_config(
     source_service_name: str,
     open_metadata_host_port: str,
     open_metadata_token: str,
     logger_level: str = "INFO",
     generate_sample_data: bool = True,
     process_pii_sensitive: bool = False,
+    pipeline_name: str = "profiler",
 ) -> dict:
     data = {
         "source": {
@@ -67,36 +78,20 @@ def build_profiler_config(
                     "type": "Profiler",
                     "generateSampleData": generate_sample_data,
                     "processPiiSensitive": process_pii_sensitive,
-                    # ToDo: Add optional parameters
-                    # "profileSample": 85,
-                    # "threadCount": 5,
-                    # "confidence": 80,
-                    # "timeoutSeconds": 43200,
-                    # "databaseFilterPattern": {
-                    #     "includes": ["database1", "database2"],
-                    #     "excludes": ["database3", "database4"]
-                    # },
-                    # "schemaFilterPattern": {
-                    #     "includes": ["schema1", "schema2"],
-                    #     "excludes": ["schema3", "schema4"]
-                    # },
-                    # "tableFilterPattern": {
-                    #     "includes": ["table1", "table2"],
-                    #     "excludes": ["table3", "table4"]
-                    # }
                 }
             },
         },
         "processor": {"type": "orm-profiler", "config": {}},
         "sink": {"type": "metadata-rest", "config": {}},
-        "workflowConfig": {
-            "loggerLevel": logger_level,
-            "openMetadataServerConfig": {
-                "hostPort": open_metadata_host_port,
-                "authProvider": "openmetadata",
-                "securityConfig": {"jwtToken": open_metadata_token},
-            },
-        },
+        "ingestionPipelineFQN": f"{source_service_name}.{pipeline_name}",
     }
+
+    workflow_config = build_workflow_config(
+        logger_level=logger_level,
+        open_metadata_host_port=open_metadata_host_port,
+        open_metadata_token=open_metadata_token,
+    )
+
+    data.update(workflow_config)
 
     return data
