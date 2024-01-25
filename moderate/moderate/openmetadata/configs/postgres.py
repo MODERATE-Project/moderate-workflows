@@ -2,7 +2,6 @@
 https://docs.open-metadata.org/v1.2.x/connectors/database/postgres/yaml
 """
 
-
 from moderate.openmetadata.configs.common import build_workflow_config
 
 

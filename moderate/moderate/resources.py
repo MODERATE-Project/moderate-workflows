@@ -1,5 +1,6 @@
-from typing import Union
+from typing import List, Optional, Union
 
+import requests
 import sqlalchemy.exc
 from dagster import ConfigurableResource, get_dagster_logger
 from keycloak import KeycloakAdmin, KeycloakOpenIDConnection
@@ -89,3 +90,36 @@ class OpenMetadataResource(ConfigurableResource):
             )
 
         return "{}:{}/api".format(scheme_and_host, self.port)
+
+
+class S3ObjectStorageResource(ConfigurableResource):
+    access_key_id: str
+    secret_access_key: str
+    region: str
+    bucket_name: str
+    endpoint_url: str
+
+
+class PlatformAPIResource(ConfigurableResource):
+    base_url: str
+    username: str
+    password: str
+
+    def join_url(self, *parts: List[str]) -> str:
+        return self.base_url.strip("/") + "/" + "/".join(parts)
+
+    def get_token(self) -> str:
+        logger = get_dagster_logger()
+        url = self.join_url("api", "token")
+
+        data = {
+            "username": self.username,
+            "password": self.password,
+        }
+
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        logger.debug(f"Requesting access token from {url}")
+        response = requests.request("POST", url, headers=headers, data=data)
+        response.raise_for_status()
+        logger.debug(f"Received access token from {url}")
+        return response.json()["access_token"]

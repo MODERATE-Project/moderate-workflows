@@ -4,6 +4,23 @@ A project that implements the data pipelines for the MODERATE project. These pip
 
 ## Development
 
+### Configure connection to API and S3
+
+Some pipelines depend on the MODERATE's platform API and an S3-compatible object storage service. These dependencies can be configured in a local `.env` file—which will not be committed to the repository—using the following variables:
+
+```console
+API_BASE_URL=http://localhost:9080
+API_USERNAME=andres.garcia
+API_PASSWORD=TheApiPassword
+S3_ACCESS_KEY_ID=TheAccessKeyId
+S3_SECRET_ACCESS_KEY=TheSecretAccessKey
+S3_REGION=europe-west1
+S3_BUCKET_NAME=TheBucketName
+S3_ENDPOINT_URL=https://storage.googleapis.com
+```
+
+These should be optional, so you can still run the pipelines that don't depend on these services.
+
 ### Deploy a local Kubernetes-based instance
 
 There's a task in the Taskfile called `start-dev-k8s` that deploys a local Kubernetes cluster using Minikube. This aims to represent, as faithfully as possible, the same environment as the production Kubernetes cluster. It is useful for testing the Dagster integration with Kubernetes locally.

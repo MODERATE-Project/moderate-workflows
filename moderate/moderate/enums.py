@@ -5,6 +5,8 @@ class ResourceNames(enum.Enum):
     KEYCLOAK = "keycloak"
     POSTGRES = "postgres"
     OPEN_METADATA = "open_metadata"
+    S3_OBJECT_STORAGE = "s3_object_storage"
+    PLATFORM_API = "platform_api"
 
 
 class Variables(enum.Enum):
@@ -20,7 +22,17 @@ class Variables(enum.Enum):
     OPEN_METADATA_PORT = "OPEN_METADATA_PORT"
     OPEN_METADATA_TOKEN = "OPEN_METADATA_TOKEN"
     TRUST_SERVICES_API_URL = "TRUST_SERVICES_API_URL"
+    S3_ACCESS_KEY_ID = "S3_ACCESS_KEY_ID"
+    S3_SECRET_ACCESS_KEY = "S3_SECRET_ACCESS_KEY"
+    S3_REGION = "S3_REGION"
+    S3_BUCKET_NAME = "S3_BUCKET_NAME"
+    S3_ENDPOINT_URL = "S3_ENDPOINT_URL"
+    API_BASE_URL = "API_BASE_URL"
+    API_USERNAME = "API_USERNAME"
+    API_PASSWORD = "API_PASSWORD"
 
 
 class VariableDefaults(enum.Enum):
     KEYCLOAK_MAIN_REALM_NAME = "moderate"
+    S3_ENDPOINT_URL = "https://storage.googleapis.com"
+    API_BASE_URL = "https://api.gw.moderate.cloud"

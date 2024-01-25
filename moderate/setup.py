@@ -19,6 +19,7 @@ setup(
         "PyYAML==6.0.1",
         "urllib3<2.0",
         "trino>=0.321.0,<=0.327",
+        "requests>=2.0,<3.0",
     ],
     extras_require={
         "dev": [

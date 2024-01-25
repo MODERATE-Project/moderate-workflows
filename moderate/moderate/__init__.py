@@ -35,9 +35,24 @@ defs = Definitions(
             port=EnvVar.int(Variables.OPEN_METADATA_PORT.value),
             token=EnvVar(Variables.OPEN_METADATA_TOKEN.value),
         ),
+        ResourceNames.S3_OBJECT_STORAGE.value: moderate.resources.S3ObjectStorageResource(
+            access_key_id=EnvVar(Variables.S3_ACCESS_KEY_ID.value),
+            secret_access_key=EnvVar(Variables.S3_SECRET_ACCESS_KEY.value),
+            region=EnvVar(Variables.S3_REGION.value),
+            bucket_name=EnvVar(Variables.S3_BUCKET_NAME.value),
+            endpoint_url=os.getenv(
+                Variables.S3_ENDPOINT_URL.value, VariableDefaults.S3_ENDPOINT_URL.value
+            ),
+        ),
+        ResourceNames.PLATFORM_API.value: moderate.resources.PlatformAPIResource(
+            base_url=EnvVar(Variables.API_BASE_URL.value),
+            username=EnvVar(Variables.API_USERNAME.value),
+            password=EnvVar(Variables.API_PASSWORD.value),
+        ),
     },
     jobs=[
         moderate.openmetadata.assets.postgres_ingestion_job,
+        moderate.openmetadata.assets.datalake_ingestion_job,
         moderate.trust.call_trust_services_new_user_job,
         moderate.trust.call_trust_services_new_asset_job,
         moderate.trust.verify_asset_trust_services_job,
