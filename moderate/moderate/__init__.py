@@ -3,13 +3,19 @@ import os
 from dagster import Definitions, EnvVar, load_assets_from_modules
 
 import moderate.assets
+import moderate.datasets
 import moderate.openmetadata.assets
 import moderate.resources
 import moderate.trust
 from moderate.enums import ResourceNames, VariableDefaults, Variables
 
 all_assets = load_assets_from_modules(
-    [moderate.assets, moderate.openmetadata.assets, moderate.trust]
+    [
+        moderate.assets,
+        moderate.openmetadata.assets,
+        moderate.trust,
+        moderate.datasets,
+    ]
 )
 
 defs = Definitions(
@@ -57,5 +63,8 @@ defs = Definitions(
         moderate.trust.call_trust_services_new_asset_job,
         moderate.trust.verify_asset_trust_services_job,
     ],
-    sensors=[moderate.trust.keycloak_user_sensor, moderate.trust.data_asset_sensor],
+    sensors=[
+        moderate.trust.keycloak_user_sensor,
+        moderate.trust.data_asset_sensor,
+    ],
 )

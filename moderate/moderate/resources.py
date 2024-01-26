@@ -4,13 +4,18 @@ import requests
 import sqlalchemy.exc
 from dagster import ConfigurableResource, get_dagster_logger
 from keycloak import KeycloakAdmin, KeycloakOpenIDConnection
-from sqlalchemy import create_engine, text
+from slugify import slugify
+from sqlalchemy import Column, Integer, String, create_engine, select, text
 from sqlalchemy.engine.base import Engine
+from sqlalchemy.orm import Session, declarative_base
 
 _LOCAL_NAMES = [
     "host.docker.internal",
     "localhost",
 ]
+
+_DAGSTER_STATE_DBNAME = "moderate_workflows_dagster_state"
+_DAGSTER_STATE_TABLE_KEYVALUES = "moderate_workflows_key_values"
 
 
 class KeycloakResource(ConfigurableResource):
@@ -43,6 +48,17 @@ class KeycloakResource(ConfigurableResource):
         return self.get_keycloak_admin().users_count()
 
 
+Base = declarative_base()
+
+
+class KeyValue(Base):
+    __tablename__ = _DAGSTER_STATE_TABLE_KEYVALUES
+
+    id = Column(Integer, primary_key=True)
+    key = Column(String, index=True, unique=True)
+    value = Column(String)
+
+
 class PostgresResource(ConfigurableResource):
     host: str
     port: int
@@ -66,8 +82,50 @@ class PostgresResource(ConfigurableResource):
         try:
             with self.create_engine(isolation_level="AUTOCOMMIT").connect() as conn:
                 conn.execute(text(f"CREATE DATABASE {name}"))
+            logger.info("Created database %s", name)
         except sqlalchemy.exc.ProgrammingError:
-            logger.info("Database %s already exists", name)
+            logger.debug("Database %s already exists", name)
+
+    def ensure_dagster_state_db(self):
+        self.create_database(name=_DAGSTER_STATE_DBNAME)
+        engine = self.create_engine(db_name=_DAGSTER_STATE_DBNAME)
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+
+    def build_state_key(self, key: str, namespace: Optional[str] = None) -> str:
+        return (
+            "{}:{}".format(slugify(namespace), slugify(key))
+            if namespace
+            else slugify(key)
+        )
+
+    def get_state(self, key: str, namespace: Optional[str] = None) -> Union[str, None]:
+        logger = get_dagster_logger()
+        self.ensure_dagster_state_db()
+        key_ns = self.build_state_key(key=key, namespace=namespace)
+        logger.debug("Reading state key: %s", key_ns)
+
+        with Session(self.create_engine(db_name=_DAGSTER_STATE_DBNAME)) as session:
+            stmt = select(KeyValue).where(KeyValue.key == key_ns)
+            kv = session.execute(stmt).scalars().one_or_none()
+            return kv.value if kv else None
+
+    def set_state(self, key: str, value: str, namespace: Optional[str] = None):
+        logger = get_dagster_logger()
+        self.ensure_dagster_state_db()
+        key_ns = self.build_state_key(key=key, namespace=namespace)
+        logger.debug("Writing state key: %s - %s", key_ns, value)
+
+        with Session(self.create_engine(db_name=_DAGSTER_STATE_DBNAME)) as session:
+            stmt = select(KeyValue).where(KeyValue.key == key_ns)
+            kv = session.execute(stmt).scalars().one_or_none()
+
+            if kv is None:
+                kv = KeyValue(key=key_ns, value=value)
+            else:
+                kv.value = value
+
+            session.add(kv)
+            session.commit()
 
 
 class OpenMetadataResource(ConfigurableResource):
@@ -105,12 +163,24 @@ class PlatformAPIResource(ConfigurableResource):
     username: str
     password: str
 
-    def join_url(self, *parts: List[str]) -> str:
+    def build_url(self, *parts: List[str]) -> str:
         return self.base_url.strip("/") + "/" + "/".join(parts)
+
+    def url_create_asset(self) -> str:
+        return self.build_url("asset")
+
+    def url_find_assets(self) -> str:
+        return self.url_create_asset()
+
+    def url_read_asset(self, asset_id: str) -> str:
+        return self.build_url("asset", str(asset_id))
+
+    def url_upload_asset_object(self, asset_id: str) -> str:
+        return self.build_url("asset", str(asset_id), "object")
 
     def get_token(self) -> str:
         logger = get_dagster_logger()
-        url = self.join_url("api", "token")
+        url = self.build_url("api", "token")
 
         data = {
             "username": self.username,
@@ -123,3 +193,6 @@ class PlatformAPIResource(ConfigurableResource):
         response.raise_for_status()
         logger.debug(f"Received access token from {url}")
         return response.json()["access_token"]
+
+    def get_authorization_header(self) -> dict:
+        return {"Authorization": f"Bearer {self.get_token()}"}

@@ -2,7 +2,6 @@ import pprint
 
 from dagster import Config, asset, define_asset_job, get_dagster_logger
 
-from moderate.assets import TABLE_BUILDING_STOCK, building_stock_tables
 from moderate.openmetadata import run_metadata_workflow, run_profiler_workflow
 from moderate.openmetadata.configs.datalake import (
     build_datalake_s3_metadata_config,
@@ -21,10 +20,9 @@ from moderate.resources import (
 
 class PostgresIngestionConfig(Config):
     source_service_name: str = "platform-postgres"
-    default_dbname: str = TABLE_BUILDING_STOCK
 
 
-@asset(deps=[building_stock_tables])
+@asset
 def postgres_metadata_ingestion(
     config: PostgresIngestionConfig,
     postgres: PostgresResource,

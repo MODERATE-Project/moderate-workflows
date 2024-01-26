@@ -36,3 +36,7 @@ class VariableDefaults(enum.Enum):
     KEYCLOAK_MAIN_REALM_NAME = "moderate"
     S3_ENDPOINT_URL = "https://storage.googleapis.com"
     API_BASE_URL = "https://api.gw.moderate.cloud"
+
+
+class StateNamespaces(enum.Enum):
+    GIT_DATASET_COMMIT = "git_dataset_commit"

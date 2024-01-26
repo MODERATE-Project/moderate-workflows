@@ -20,6 +20,7 @@ setup(
         "urllib3<2.0",
         "trino>=0.321.0,<=0.327",
         "requests>=2.0,<3.0",
+        "python-slugify>=8.0,<9.0",
     ],
     extras_require={
         "dev": [
