@@ -136,8 +136,8 @@ tasks:
       - echo "OPEN_METADATA_PORT=8585" >> {{.SECRETS_PATH}}
       - echo "OPEN_METADATA_TOKEN=null" >> {{.SECRETS_PATH}}
       - echo "API_BASE_URL=http://host.docker.internal:9080" >> {{.SECRETS_PATH}}
-      - echo "API_USERNAME={{.PLATFORM_API_USERNAME}}" >> {{.SECRETS_PATH}}
-      - echo "API_PASSWORD={{.PLATFORM_API_PASSWORD}}" >> {{.SECRETS_PATH}}
+      - echo "API_USERNAME={{.API_USERNAME}}" >> {{.SECRETS_PATH}}
+      - echo "API_PASSWORD={{.API_PASSWORD}}" >> {{.SECRETS_PATH}}
       - echo "S3_ACCESS_KEY_ID={{.S3_ACCESS_KEY_ID}}" >> {{.SECRETS_PATH}}
       - echo "S3_SECRET_ACCESS_KEY={{.S3_SECRET_ACCESS_KEY}}" >> {{.SECRETS_PATH}}
       - echo "S3_REGION={{.S3_REGION}}" >> {{.SECRETS_PATH}}

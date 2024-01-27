@@ -187,6 +187,10 @@ class PlatformAPIResource(ConfigurableResource):
             "password": self.password,
         }
 
+        logger.debug(
+            "Requesting access token from %s (username=%s)", url, self.username
+        )
+
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
         logger.debug(f"Requesting access token from {url}")
         response = requests.request("POST", url, headers=headers, data=data)
