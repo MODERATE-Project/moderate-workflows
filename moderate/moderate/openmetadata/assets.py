@@ -20,6 +20,7 @@ from moderate.resources import (
 
 class PostgresIngestionConfig(Config):
     source_service_name: str = "platform-postgres"
+    default_dbname: str = "keycloak"
 
 
 @asset
