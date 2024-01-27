@@ -1,14 +1,15 @@
 import io
 import json
+import os
 import pprint
 import shutil
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import IO, Any, ContextManager, Dict, Optional
+from typing import IO, Any, ContextManager, Dict, List, Optional
 
 import requests
-from dagster import Output, get_dagster_logger, usable_as_dagster_type
+from dagster import DagsterType, Output, get_dagster_logger, usable_as_dagster_type
 from sh import git
 from slugify import slugify
 
@@ -50,8 +51,32 @@ class GitAssetForPlatform:
 GitAssetForPlatformDagsterType = usable_as_dagster_type(GitAssetForPlatform)
 
 
+def is_list_of_git_asset_for_platform(_, value):
+    return isinstance(value, list) and all(
+        isinstance(i, GitAssetForPlatform) for i in value
+    )
+
+
+ListOfGitAssetForPlatformDagsterType = DagsterType(
+    name="ListOfGitAssetForPlatform",
+    type_check_fn=is_list_of_git_asset_for_platform,
+    description="A list of GitAssetForPlatform objects",
+)
+
+
+def dataset_name_from_file_path(
+    file_path: str, sibling_paths: Optional[List[str]] = None
+) -> str:
+    common_prefix = os.path.commonprefix(sibling_paths) if sibling_paths else ""
+    file_path = file_path.replace(common_prefix, "", 1)
+    path_part, _ = os.path.splitext(file_path)
+    return slugify(path_part)
+
+
 @contextmanager
-def clone_git_repo(config: GitRepo) -> ContextManager[ClonedRepo]:
+def clone_git_repo(
+    config: GitRepo, lfs: bool = False, lfs_globs: Optional[List[str]] = None
+) -> ContextManager[ClonedRepo]:
     """Context manager that clones a git repository and yields the temporal directory."""
 
     git_dir = str(uuid.uuid4())
@@ -64,6 +89,16 @@ def clone_git_repo(config: GitRepo) -> ContextManager[ClonedRepo]:
         logger.info("Checking out tree-ish: %s", config.tree_ish)
         git.reset("--hard", config.tree_ish, _cwd=git_dir)
         commit_sha = git("rev-parse", "HEAD", _cwd=git_dir).strip()
+
+        if lfs and not lfs_globs:
+            logger.warning("LFS is enabled but no globs are provided")
+
+        if lfs and lfs_globs:
+            git.lfs.install(_cwd=git_dir)
+            logger.info("Fetching LFS objects: %s", lfs_globs)
+            git.lfs.fetch("-I", ",".join(lfs_globs), _cwd=git_dir)
+            logger.info("Checking out LFS objects: %s", lfs_globs)
+            git.checkout(config.tree_ish, "--", *lfs_globs, _cwd=git_dir)
 
         yield ClonedRepo(
             repo_url=config.repo_url, repo_dir=git_dir, commit_sha=commit_sha
