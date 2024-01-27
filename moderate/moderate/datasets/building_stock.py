@@ -6,6 +6,7 @@ import pandas as pd
 from dagster import (
     AssetIn,
     AssetOut,
+    Config,
     MetadataValue,
     Output,
     asset,
@@ -23,26 +24,28 @@ from moderate.datasets.utils import (
 )
 from moderate.resources import PlatformAPIResource, PostgresResource
 
-_BUILDING_STOCK_REPO = "https://github.com/MODERATE-Project/building-stock-analysis.git"
-_BUILDING_STOCK_TREEISH = "main"
 
-_BUILDING_STOCK_PATHS = {
-    DatasetNames.BUILDING_STOCK_T31_EPC_CLASSIFICATION: os.path.join(
-        "T3.1-dynamic-analysis",
-        "Case-study-I-EPCs-classification",
-        "MODERATE-D3.1-Dataset1.csv",
-    ),
-    DatasetNames.BUILDING_STOCK_T31_PV_ANALYSIS: os.path.join(
-        "T3.1-dynamic-analysis",
-        "Case-study-II-III-PV-analysis",
-        "MODERATE-D3.1-Dataset2_3.csv",
-    ),
-    DatasetNames.BUILDING_STOCK_T32_BUILDING_STOCK: os.path.join(
-        "T3.2-static-analysis",
-        "data",
-        "HEU MODERATE Building Stock Data_Sources.csv",
-    ),
-}
+class BuildingStockDatasetsConfig(Config):
+    git_url: str = "https://github.com/MODERATE-Project/building-stock-analysis.git"
+    git_treeish: str = "main"
+
+    dataset_paths: Dict[str, str] = {
+        DatasetNames.BUILDING_STOCK_T31_EPC_CLASSIFICATION.value: os.path.join(
+            "T3.1-dynamic-analysis",
+            "Case-study-I-EPCs-classification",
+            "MODERATE-D3.1-Dataset1.csv",
+        ),
+        DatasetNames.BUILDING_STOCK_T31_PV_ANALYSIS.value: os.path.join(
+            "T3.1-dynamic-analysis",
+            "Case-study-II-III-PV-analysis",
+            "MODERATE-D3.1-Dataset2_3.csv",
+        ),
+        DatasetNames.BUILDING_STOCK_T32_BUILDING_STOCK.value: os.path.join(
+            "T3.2-static-analysis",
+            "data",
+            "HEU MODERATE Building Stock Data_Sources.csv",
+        ),
+    }
 
 
 @multi_asset(
@@ -58,21 +61,21 @@ _BUILDING_STOCK_PATHS = {
         ),
     }
 )
-def building_stock():
+def building_stock(config: BuildingStockDatasetsConfig):
     """Creates the building stock analysis data assets."""
 
     logger = get_dagster_logger()
-    git_repo = GitRepo(repo_url=_BUILDING_STOCK_REPO, tree_ish=_BUILDING_STOCK_TREEISH)
+    git_repo = GitRepo(repo_url=config.git_url, tree_ish=config.git_treeish)
 
     with clone_git_repo(config=git_repo) as cloned_repo:
         file_paths = {
             key: os.path.join(cloned_repo.repo_dir, val)
-            for key, val in _BUILDING_STOCK_PATHS.items()
+            for key, val in config.dataset_paths.items()
             if os.path.exists(os.path.join(cloned_repo.repo_dir, val))
         }
 
         read_csv_kwargs = {
-            DatasetNames.BUILDING_STOCK_T31_PV_ANALYSIS: {
+            DatasetNames.BUILDING_STOCK_T31_PV_ANALYSIS.value: {
                 "skiprows": 1,
                 "sep": ";",
                 "decimal": ",",
@@ -97,12 +100,12 @@ def building_stock():
             yield Output(
                 value=GitAssetForPlatform(
                     data=value,
-                    name=dataset_name.value,
+                    name=dataset_name,
                     format=DataFormats.PARQUET,
                     metadata=output_metadata,
-                    series_id=dataset_name.value,
+                    series_id=dataset_name,
                 ),
-                output_name=dataset_name.value,
+                output_name=dataset_name,
                 metadata={
                     **output_metadata,
                     **{
