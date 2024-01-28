@@ -192,7 +192,6 @@ class PlatformAPIResource(ConfigurableResource):
         )
 
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        logger.debug(f"Requesting access token from {url}")
         response = requests.request("POST", url, headers=headers, data=data)
         response.raise_for_status()
         logger.debug(f"Received access token from {url}")

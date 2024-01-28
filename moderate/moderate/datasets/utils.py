@@ -1,3 +1,4 @@
+import glob
 import io
 import json
 import os
@@ -6,10 +7,17 @@ import shutil
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import IO, Any, ContextManager, Dict, List, Optional
+from typing import IO, Any, ContextManager, Dict, List, Optional, Tuple
 
+import pandas as pd
 import requests
-from dagster import DagsterType, Output, get_dagster_logger, usable_as_dagster_type
+from dagster import (
+    DagsterType,
+    MetadataValue,
+    Output,
+    get_dagster_logger,
+    usable_as_dagster_type,
+)
 from sh import git
 from slugify import slugify
 
@@ -38,6 +46,7 @@ class GitAssetForPlatform:
     format: DataFormats
     metadata: Optional[Dict[str, str]] = None
     series_id: Optional[str] = None
+    parent_asset_name: Optional[str] = None
 
     @property
     def file_name(self) -> str:
@@ -46,6 +55,26 @@ class GitAssetForPlatform:
     @property
     def file_name_slug(self) -> str:
         return slugify(self.file_name)
+
+    @property
+    def platform_asset_name(self) -> str:
+        return self.parent_asset_name or self.name
+
+    @property
+    def state_ns(self) -> str:
+        return StateNamespaces.GIT_DATASET_COMMIT.value
+
+    @property
+    def state_key(self) -> str:
+        return (
+            "{}-{}".format(self.parent_asset_name, self.name)
+            if self.parent_asset_name
+            else self.name
+        )
+
+    @property
+    def state_val(self) -> Optional[str]:
+        return self.metadata.get("commit_sha") if self.metadata else None
 
 
 GitAssetForPlatformDagsterType = usable_as_dagster_type(GitAssetForPlatform)
@@ -205,25 +234,30 @@ def upload_git_asset_for_platform(
     asset_for_platform: GitAssetForPlatform,
     platform_api: PlatformAPIResource,
     postgres: PostgresResource,
-) -> Output[Dict]:
+) -> Tuple[Optional[Dict], Dict]:
     logger = get_dagster_logger()
     logger.info("Uploading asset %s to platform", asset_for_platform.name)
-    the_asset = ensure_asset(platform_api=platform_api, name=asset_for_platform.name)
-    logger.info("Asset: %s", the_asset)
-    meta = asset_for_platform.metadata or {}
-    this_commit = meta.get("commit_sha")
-    logger.info("Commit from input: %s", this_commit)
 
-    state_commit = postgres.get_state(
-        key=asset_for_platform.name,
-        namespace=StateNamespaces.GIT_DATASET_COMMIT.value,
+    the_asset = ensure_asset(
+        platform_api=platform_api, name=asset_for_platform.platform_asset_name
     )
 
-    logger.info("Commit found in state DB: %s", state_commit)
+    logger.info("Asset: %s", the_asset)
+    this_commit = asset_for_platform.state_val
+    logger.info("Commit from input: %s", this_commit)
 
-    if this_commit and state_commit and this_commit == state_commit:
-        logger.info("Commit %s already uploaded: skipping", state_commit)
-        return Output({}, metadata={"commit_sha": state_commit, "skipped": True})
+    db_commit = postgres.get_state(
+        key=asset_for_platform.state_key,
+        namespace=asset_for_platform.state_ns,
+    )
+
+    logger.info("Commit found in state DB: %s", db_commit)
+
+    if this_commit and db_commit and this_commit == db_commit:
+        logger.info("Commit %s already uploaded: skipping", db_commit)
+        return None, {"commit_sha": db_commit, "skipped": True}
+
+    meta = asset_for_platform.metadata or {}
 
     uploaded_object = upload_asset_object(
         platform_api=platform_api,
@@ -235,16 +269,128 @@ def upload_git_asset_for_platform(
     )
 
     postgres.set_state(
-        key=asset_for_platform.name,
+        key=asset_for_platform.state_key,
         value=this_commit,
-        namespace=StateNamespaces.GIT_DATASET_COMMIT.value,
+        namespace=asset_for_platform.state_ns,
     )
 
-    return Output(
-        uploaded_object,
-        metadata={
-            key: val
-            for key, val in uploaded_object.items()
-            if isinstance(val, (str, int, float))
-        },
-    )
+    return uploaded_object, {
+        key: val
+        for key, val in uploaded_object.items()
+        if isinstance(val, (str, int, float))
+    }
+
+
+def clone_and_parse_datasets(
+    git_url: str,
+    git_treeish: str,
+    git_file_globs: List[str],
+    git_lfs: bool = False,
+    git_lfs_globs: Optional[List[str]] = None,
+    pd_read_kwargs: Optional[Dict[str, Dict]] = None,
+    platform_asset_name: Optional[str] = None,
+) -> Output[List[GitAssetForPlatform]]:
+    logger = get_dagster_logger()
+    git_repo = GitRepo(repo_url=git_url, tree_ish=git_treeish)
+
+    with clone_git_repo(
+        config=git_repo, lfs=git_lfs, lfs_globs=git_lfs_globs
+    ) as cloned_repo:
+        file_paths = [
+            os.path.abspath(file_path)
+            for dataset_path in git_file_globs
+            for file_path in glob.glob(os.path.join(cloned_repo.repo_dir, dataset_path))
+            if os.path.exists(os.path.abspath(file_path))
+        ]
+
+        logger.debug("Found the following files:\n%s", pprint.pformat(file_paths))
+
+        dfs = {}
+
+        for fpath in file_paths:
+            read_kwargs_candidates = (
+                [key for key in pd_read_kwargs.keys() if fpath.endswith(key)]
+                if pd_read_kwargs
+                else []
+            )
+
+            read_kwargs_key = (
+                sorted(read_kwargs_candidates, key=lambda x: len(x), reverse=True)[0]
+                if len(read_kwargs_candidates)
+                else None
+            )
+
+            read_kwargs = (
+                pd_read_kwargs.get(read_kwargs_key, {}) if pd_read_kwargs else {}
+            )
+
+            logger.debug("Read kwargs for '%s': %s", fpath, read_kwargs)
+            dfs[fpath] = pd.read_csv(fpath, **read_kwargs)
+
+        for fpath, df in dfs.items():
+            logger.debug("Sample of DataFrame '%s':\n%s", fpath, df.head())
+
+        parquet_bytes = {fpath: df.to_parquet(path=None) for fpath, df in dfs.items()}
+
+        asset_metadata = {
+            "repo_url": cloned_repo.repo_url,
+            "commit_sha": cloned_repo.commit_sha,
+        }
+
+        output_value = []
+        output_metadata = {**asset_metadata}
+
+        for fpath, data in parquet_bytes.items():
+            dataset_name = dataset_name_from_file_path(
+                file_path=fpath, sibling_paths=file_paths
+            )
+
+            output_value.append(
+                GitAssetForPlatform(
+                    data=data,
+                    name=dataset_name,
+                    format=DataFormats.PARQUET,
+                    metadata=asset_metadata,
+                    series_id=dataset_name,
+                    parent_asset_name=platform_asset_name,
+                )
+            )
+
+            output_metadata.update(
+                {
+                    f"{dataset_name}_size_MiB": len(data) / (1024.0**2),
+                    f"{dataset_name}_preview": MetadataValue.md(
+                        dfs[fpath].head().to_markdown()
+                    ),
+                }
+            )
+
+        return Output(output_value, metadata=output_metadata)
+
+
+def upload_list_of_git_assets(
+    list_of_git_assets: List[GitAssetForPlatform],
+    platform_api: PlatformAPIResource,
+    postgres: PostgresResource,
+) -> Output[List[Dict]]:
+    logger = get_dagster_logger()
+    output_value = []
+    output_metadata = {}
+
+    for asset_for_platform in list_of_git_assets:
+        logger.info("Uploading asset for platform: %s", asset_for_platform.name)
+
+        uploaded_obj, obj_meta = upload_git_asset_for_platform(
+            asset_for_platform=asset_for_platform,
+            platform_api=platform_api,
+            postgres=postgres,
+        )
+
+        output_metadata.update(
+            {f"{asset_for_platform.name}_{key}": val for key, val in obj_meta.items()}
+        )
+
+        logger.debug("Uploaded object:\n%s", pprint.pformat(uploaded_obj))
+        logger.debug("Current metadata:\n%s", pprint.pformat(output_metadata))
+
+    return Output(value=output_value, metadata=output_metadata)

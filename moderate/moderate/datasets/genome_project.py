@@ -1,24 +1,21 @@
-import glob
-import os
-import pprint
-from typing import List
+from typing import Dict, List
 
-import pandas as pd
-from dagster import Config, MetadataValue, Output, asset, get_dagster_logger
+from dagster import Config, Output, asset
 
-from moderate.datasets.enums import DataFormats
+from moderate.datasets.enums import PlatformBuiltinAssetNames
 from moderate.datasets.utils import (
     GitAssetForPlatform,
-    GitRepo,
     ListOfGitAssetForPlatformDagsterType,
-    clone_git_repo,
-    dataset_name_from_file_path,
+    clone_and_parse_datasets,
+    upload_list_of_git_assets,
 )
+from moderate.resources import PlatformAPIResource, PostgresResource
 
 
 class GenomeProjectDatasetsConfig(Config):
     git_url: str = "https://github.com/buds-lab/building-data-genome-project-2.git"
     git_treeish: str = "master"
+    git_lfs: bool = True
 
     dataset_paths: List[str] = [
         "data/meters/cleaned/*.csv",
@@ -31,62 +28,28 @@ class GenomeProjectDatasetsConfig(Config):
 def genome_project_datasets(
     config: GenomeProjectDatasetsConfig,
 ) -> Output[List[GitAssetForPlatform]]:
-    logger = get_dagster_logger()
-    git_repo = GitRepo(repo_url=config.git_url, tree_ish=config.git_treeish)
+    """Downloads the GENOME Project datasets from the source Git repository."""
 
-    with clone_git_repo(
-        config=git_repo, lfs=True, lfs_globs=config.dataset_paths
-    ) as cloned_repo:
-        file_paths = [
-            os.path.abspath(file_path)
-            for dataset_path in config.dataset_paths
-            for file_path in glob.glob(os.path.join(cloned_repo.repo_dir, dataset_path))
-            if os.path.exists(os.path.abspath(file_path))
-        ]
+    return clone_and_parse_datasets(
+        platform_asset_name=PlatformBuiltinAssetNames.GENOME_PROJECT.value,
+        git_url=config.git_url,
+        git_treeish=config.git_treeish,
+        git_file_globs=config.dataset_paths,
+        git_lfs=config.git_lfs,
+        git_lfs_globs=config.dataset_paths,
+    )
 
-        logger.debug("Found the following files:\n%s", pprint.pformat(file_paths))
-        read_csv_kwargs = {}
 
-        dfs = {
-            fpath: pd.read_csv(fpath, **read_csv_kwargs.get(fpath, {}))
-            for fpath in file_paths
-        }
+@asset
+def platform_asset_genome_project_datasets(
+    genome_project_datasets: List[GitAssetForPlatform],
+    platform_api: PlatformAPIResource,
+    postgres: PostgresResource,
+) -> Output[List[Dict]]:
+    """Uploads the GENOME Project datasets to the platform."""
 
-        for fpath, df in dfs.items():
-            logger.debug("Sample of DataFrame '%s':\n%s", fpath, df.head())
-
-        parquet_bytes = {fpath: df.to_parquet(path=None) for fpath, df in dfs.items()}
-
-        output_metadata = {
-            "repo_url": cloned_repo.repo_url,
-            "commit_sha": cloned_repo.commit_sha,
-        }
-
-        output_value = []
-        output_metadata = {}
-
-        for fpath, data in parquet_bytes.items():
-            dataset_name = dataset_name_from_file_path(
-                file_path=fpath, sibling_paths=file_paths
-            )
-
-            output_value.append(
-                GitAssetForPlatform(
-                    data=data,
-                    name=dataset_name,
-                    format=DataFormats.PARQUET,
-                    metadata=output_metadata,
-                    series_id=dataset_name,
-                )
-            )
-
-            output_metadata.update(
-                {
-                    f"{dataset_name}_size_MiB": len(data) / (1024.0**2),
-                    f"{dataset_name}_preview": MetadataValue.md(
-                        dfs[fpath].head().to_markdown()
-                    ),
-                }
-            )
-
-        return Output(output_value, metadata=output_metadata)
+    return upload_list_of_git_assets(
+        list_of_git_assets=genome_project_datasets,
+        platform_api=platform_api,
+        postgres=postgres,
+    )
