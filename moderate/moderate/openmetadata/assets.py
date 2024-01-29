@@ -139,7 +139,9 @@ def datalake_profiler_ingestion(
         "Running profiler ingestion workflow:\n%s", pprint.pformat(workflow_config)
     )
 
-    run_profiler_workflow(workflow_config)
+    # We don't have too much control over the data in the datalake, so we don't want to
+    # fail the whole workflow if the profiler fails. Instead, we'll just log the error.
+    run_profiler_workflow(workflow_config, log_instead_of_raise=True)
 
 
 datalake_ingestion_job = define_asset_job(
