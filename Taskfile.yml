@@ -26,8 +26,6 @@ vars:
     sh: ip route get 1.2.3.4 | awk '{print $7}'
   OPEN_METADATA_ROOT_URL: http://{{.MAIN_IP_ADDRESS}}:8585
   KEYCLOAK_URL: http://{{.MAIN_IP_ADDRESS}}:8080
-  TRUST_COMPOSE_PROJECT_NAME: moderate-trust
-  TRUST_MONGO_PORT: 27117
 
 env:
   IMAGE_REMOTE_NAME: "{{.IMAGE_REMOTE_NAME}}"
@@ -55,7 +53,6 @@ tasks:
         ignore_error: true
       - cmd: rm {{.ROOT_DIR}}/{{.OPEN_METADATA_PEM_PRIVKEY}}
         ignore_error: true
-      - task: trust-down
 
   show-env:
     silent: true
@@ -319,21 +316,3 @@ tasks:
     cmds:
       - task: push-code-image
       - kubectl rollout restart deployment/{{.USER_DEPLOYMENT}}
-
-  trust-up:
-    desc: Start the Trust Services Compose stack
-    env:
-      COMPOSE_PROJECT_NAME: "{{.TRUST_COMPOSE_PROJECT_NAME}}"
-      MONGO_PORT: "{{.TRUST_MONGO_PORT}}"
-    cmds:
-      - echo "📣 You need to be logged in to Artifact Registry to pull the Trust Services images"
-      - echo "💻 gcloud auth configure-docker europe-west1-docker.pkg.dev"
-      - docker compose -f {{.ROOT_DIR}}/docker-compose.trust.yml up -d --build --wait
-
-  trust-down:
-    desc: Stop the Trust Services Compose stack
-    env:
-      COMPOSE_PROJECT_NAME: "{{.TRUST_COMPOSE_PROJECT_NAME}}"
-      MONGO_PORT: "{{.TRUST_MONGO_PORT}}"
-    cmds:
-      - docker compose -f {{.ROOT_DIR}}/docker-compose.trust.yml down -v
