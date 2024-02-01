@@ -18,7 +18,7 @@ from moderate.resources import PlatformAPIResource
 from moderate.trust.utils import ProofResponseDict, wait_for_task
 
 _SENSOR_MIN_INTERVAL_SECONDS = 300
-_GET_REQUEST_LIMIT = 10
+_LIMIT_PER_RUN = 10
 
 
 class ProofCreationTrustConfig(Config):
@@ -97,7 +97,7 @@ def platform_api_asset_object_sensor(
         headers=headers,
         params={
             "filters": json.dumps([["proof_id", "eq", None]]),
-            "limit": _GET_REQUEST_LIMIT,
+            "limit": _LIMIT_PER_RUN,
         },
     )
 

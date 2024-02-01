@@ -39,3 +39,4 @@ class VariableDefaults(enum.Enum):
 
 class StateNamespaces(enum.Enum):
     GIT_DATASET_COMMIT = "git_dataset_commit"
+    USER_TRUST_DID = "user_trust_did"

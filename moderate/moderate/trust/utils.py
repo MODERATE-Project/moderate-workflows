@@ -1,7 +1,7 @@
 import pprint
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Dict, Optional
 
 import requests
 from dagster import DagsterLogManager
@@ -16,10 +16,6 @@ class KeycloakUserDict:
     @property
     def username(self) -> str:
         return self.user_dict["username"]
-
-    @property
-    def user_registration_job_key(self) -> str:
-        return f"user_registration_{self.username}"
 
 
 @dataclass
