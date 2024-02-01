@@ -37,7 +37,10 @@ class KeycloakResource(ConfigurableResource):
         }
 
         keycloak_kwargs.update(kwargs)
-        logger.debug(f"Connecting to Keycloak with {keycloak_kwargs}")
+
+        safe_log_kwargs = {**keycloak_kwargs}
+        safe_log_kwargs.pop("password")
+        logger.debug("Creating Keycloak connection with kwargs: %s", safe_log_kwargs)
 
         return KeycloakOpenIDConnection(**keycloak_kwargs)
 
@@ -177,6 +180,18 @@ class PlatformAPIResource(ConfigurableResource):
 
     def url_upload_asset_object(self, asset_id: str) -> str:
         return self.build_url("asset", str(asset_id), "object")
+
+    def url_ensure_user_trust_did(self) -> str:
+        return self.build_url("user", "did")
+
+    def url_check_did_task(self, task_id: Union[str, int]) -> str:
+        return self.build_url("user", "did", "task", str(task_id))
+
+    def url_ensure_trust_proof(self) -> str:
+        return self.build_url("asset", "proof")
+
+    def url_check_proof_task(self, task_id: Union[str, int]) -> str:
+        return self.build_url("asset", "proof", "task", str(task_id))
 
     def get_token(self) -> str:
         logger = get_dagster_logger()

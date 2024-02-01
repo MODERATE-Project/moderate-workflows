@@ -59,12 +59,9 @@ defs = Definitions(
     jobs=[
         moderate.openmetadata.assets.postgres_ingestion_job,
         moderate.openmetadata.assets.datalake_ingestion_job,
-        moderate.trust.call_trust_services_new_user_job,
-        moderate.trust.call_trust_services_new_asset_job,
-        moderate.trust.verify_asset_trust_services_job,
+        moderate.trust.propagate_new_user_to_trust_services_job,
     ],
     sensors=[
         moderate.trust.keycloak_user_sensor,
-        moderate.trust.data_asset_sensor,
     ],
 )
