@@ -175,6 +175,9 @@ class PlatformAPIResource(ConfigurableResource):
     def url_find_assets(self) -> str:
         return self.url_create_asset()
 
+    def url_find_asset_objects(self) -> str:
+        return self.build_url("asset", "object")
+
     def url_read_asset(self, asset_id: str) -> str:
         return self.build_url("asset", str(asset_id))
 

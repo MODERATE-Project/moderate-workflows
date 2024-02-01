@@ -36,6 +36,19 @@ class DIDResponseDict:
 
 
 @dataclass
+class ProofResponseDict:
+    the_dict: Dict[str, Any]
+
+    @property
+    def task_id(self) -> Optional[int]:
+        return self.the_dict.get("task_id")
+
+    @property
+    def proof_exists_already(self) -> bool:
+        return not self.task_id and self.the_dict.get("obj")
+
+
+@dataclass
 class TaskResponseDict:
     the_dict: Dict[str, Any]
 

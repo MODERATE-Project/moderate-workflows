@@ -60,8 +60,10 @@ defs = Definitions(
         moderate.openmetadata.assets.postgres_ingestion_job,
         moderate.openmetadata.assets.datalake_ingestion_job,
         moderate.trust.propagate_new_user_to_trust_services_job,
+        moderate.trust.create_asset_object_proof_job,
     ],
     sensors=[
         moderate.trust.keycloak_user_sensor,
+        moderate.trust.platform_api_asset_object_sensor,
     ],
 )
