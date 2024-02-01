@@ -94,17 +94,18 @@ class PostgresResource(ConfigurableResource):
         engine = self.create_engine(db_name=_DAGSTER_STATE_DBNAME)
         Base.metadata.create_all(bind=engine, checkfirst=True)
 
-    def build_state_key(self, key: str, namespace: Optional[str] = None) -> str:
-        return (
-            "{}:{}".format(slugify(namespace), slugify(key))
-            if namespace
-            else slugify(key)
-        )
+    def build_state_key(
+        self, key: str, namespace: Optional[str] = None, slug_key: bool = True
+    ) -> str:
+        key_part = slugify(key) if slug_key else key
+        return "{}:{}".format(slugify(namespace), key_part) if namespace else key_part
 
-    def get_state(self, key: str, namespace: Optional[str] = None) -> Union[str, None]:
+    def get_state(
+        self, key: str, namespace: Optional[str] = None, slug_key: bool = True
+    ) -> Union[str, None]:
         logger = get_dagster_logger()
         self.ensure_dagster_state_db()
-        key_ns = self.build_state_key(key=key, namespace=namespace)
+        key_ns = self.build_state_key(key=key, namespace=namespace, slug_key=slug_key)
         logger.debug("Reading state key: %s", key_ns)
 
         with Session(self.create_engine(db_name=_DAGSTER_STATE_DBNAME)) as session:
@@ -112,10 +113,16 @@ class PostgresResource(ConfigurableResource):
             kv = session.execute(stmt).scalars().one_or_none()
             return kv.value if kv else None
 
-    def set_state(self, key: str, value: str, namespace: Optional[str] = None):
+    def set_state(
+        self,
+        key: str,
+        value: str,
+        namespace: Optional[str] = None,
+        slug_key: bool = True,
+    ):
         logger = get_dagster_logger()
         self.ensure_dagster_state_db()
-        key_ns = self.build_state_key(key=key, namespace=namespace)
+        key_ns = self.build_state_key(key=key, namespace=namespace, slug_key=slug_key)
         logger.debug("Writing state key: %s - %s", key_ns, value)
 
         with Session(self.create_engine(db_name=_DAGSTER_STATE_DBNAME)) as session:
