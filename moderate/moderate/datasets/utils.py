@@ -23,6 +23,7 @@ from slugify import slugify
 
 from moderate.datasets.enums import DataFormats
 from moderate.enums import StateNamespaces
+from moderate.state import PostgresState
 from moderate.resources import PlatformAPIResource, PostgresResource
 
 
@@ -246,7 +247,9 @@ def upload_git_asset_for_platform(
     this_commit = asset_for_platform.state_val
     logger.info("Commit from input: %s", this_commit)
 
-    db_commit = postgres.get_state(
+    pgstate = PostgresState(postgres=postgres)
+
+    db_commit = pgstate.get_state(
         key=asset_for_platform.state_key,
         namespace=asset_for_platform.state_ns,
     )
@@ -268,7 +271,7 @@ def upload_git_asset_for_platform(
         series_id=asset_for_platform.file_name_slug,
     )
 
-    postgres.set_state(
+    pgstate.set_state(
         key=asset_for_platform.state_key,
         value=this_commit,
         namespace=asset_for_platform.state_ns,

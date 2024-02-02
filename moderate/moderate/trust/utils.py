@@ -1,6 +1,7 @@
 import pprint
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 import requests
@@ -118,3 +119,24 @@ def wait_for_task(
     )
 
     return task_response
+
+
+def add_rounded_datetime(
+    run_key: str, minutes_interval: int, now: Optional[datetime] = None
+) -> str:
+    now = datetime.utcnow() if not now else now
+
+    rounded = datetime(
+        year=now.year,
+        month=now.month,
+        day=now.day,
+        hour=now.hour,
+        minute=(now.minute // minutes_interval) * minutes_interval,
+    )
+
+    if now.minute % minutes_interval > minutes_interval / 2:
+        rounded += timedelta(minutes=minutes_interval)
+
+    rounded_str = rounded.strftime("%Y%m%d%H%M")
+
+    return f"{run_key}_{rounded_str}"

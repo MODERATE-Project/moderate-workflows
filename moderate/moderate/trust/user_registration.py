@@ -16,10 +16,17 @@ from dagster import (
 
 from moderate.enums import StateNamespaces
 from moderate.resources import KeycloakResource, PlatformAPIResource, PostgresResource
-from moderate.trust.utils import DIDResponseDict, KeycloakUserDict, wait_for_task
+from moderate.state import PostgresState
+from moderate.trust.utils import (
+    DIDResponseDict,
+    KeycloakUserDict,
+    add_rounded_datetime,
+    wait_for_task,
+)
 
-_SENSOR_MIN_INTERVAL_SECONDS = 600
-_LIMIT_PER_RUN = 10
+_SENSOR_MIN_INTERVAL_SECONDS: int = 300
+_LIMIT_PER_RUN: int = 5
+_MAX_FREQ_MINUTES: int = 30
 
 
 class UserRegistrationTrustConfig(Config):
@@ -59,10 +66,12 @@ def propagate_new_user_to_trust_services(
     context.log.debug("Response:\n%s", pprint.pformat(req_did_json))
     did_response = DIDResponseDict(the_dict=req_did_json)
 
+    pgstate = PostgresState(postgres=postgres)
+
     if did_response.did_exists_already:
         context.log.info("The DID for user %s already exists", kc_user.username)
 
-        postgres.set_state(
+        pgstate.set_state(
             key=kc_user.username,
             namespace=StateNamespaces.USER_TRUST_DID.value,
             value=datetime.utcnow().isoformat(),
@@ -82,7 +91,7 @@ def propagate_new_user_to_trust_services(
 
     task_response.raise_error()
 
-    postgres.set_state(
+    pgstate.set_state(
         key=kc_user.username,
         namespace=StateNamespaces.USER_TRUST_DID.value,
         value=datetime.utcnow().isoformat(),
@@ -114,25 +123,43 @@ def keycloak_user_sensor(
     # https://docs.dagster.io/concepts/partitions-schedules-sensors/sensors#sensor-optimizations-using-cursors
 
     user_dicts = keycloak.get_keycloak_admin().get_users({})
-    run_counter = 0
+    context.log.info("Found %s users in Keycloak", len(user_dicts))
 
-    for user_dict in user_dicts:
-        kc_user = KeycloakUserDict(user_dict=user_dict)
+    kc_users = [KeycloakUserDict(user_dict=user_dict) for user_dict in user_dicts]
+    kc_users = {kc_user.username: kc_user for kc_user in kc_users}
+    usernames_all = list(kc_users.keys())
 
-        did_state_value = postgres.get_state(
-            key=kc_user.username,
-            namespace=StateNamespaces.USER_TRUST_DID.value,
-            slug_key=False,
-        )
+    pgstate = PostgresState(postgres=postgres)
 
-        if did_state_value:
-            continue
+    user_did_states = pgstate.get_batch(
+        keys=usernames_all,
+        namespace=StateNamespaces.USER_TRUST_DID.value,
+        slug_key=False,
+    )
 
-        utcnow = datetime.utcnow()
+    usernames_with_did = list(user_did_states.keys())
+    context.log.info("%s users already have a DID", len(usernames_with_did))
 
-        # At most one run per hour per user
-        run_key = "{}_{}_{}_{}_{}".format(
-            kc_user.username, utcnow.year, utcnow.month, utcnow.day, utcnow.hour
+    usernames_pending = list(set(usernames_all).difference(set(usernames_with_did)))
+    context.log.info("%s users pending a DID", len(usernames_pending))
+
+    kc_users = [
+        kc_user
+        for username, kc_user in kc_users.items()
+        if username in usernames_pending
+    ]
+
+    context.log.debug("Limit per run: %s", _LIMIT_PER_RUN)
+    kc_users = kc_users[:_LIMIT_PER_RUN]
+
+    context.log.debug(
+        "Requesting DID creation for usernames:\n%s",
+        pprint.pformat([kc_user.username for kc_user in kc_users]),
+    )
+
+    for kc_user in kc_users:
+        run_key = add_rounded_datetime(
+            run_key=kc_user.username, minutes_interval=_MAX_FREQ_MINUTES
         )
 
         yield RunRequest(
@@ -140,13 +167,8 @@ def keycloak_user_sensor(
             run_config=RunConfig(
                 ops={
                     "propagate_new_user_to_trust_services": UserRegistrationTrustConfig(
-                        keycloak_user_dict=user_dict,
+                        keycloak_user_dict=kc_user.user_dict,
                     )
                 }
             ),
         )
-
-        run_counter += 1
-
-        if run_counter >= _LIMIT_PER_RUN:
-            break

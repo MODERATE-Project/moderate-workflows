@@ -1,21 +1,16 @@
-from typing import List, Optional, Union
+from typing import List, Union
 
 import requests
 import sqlalchemy.exc
 from dagster import ConfigurableResource, get_dagster_logger
 from keycloak import KeycloakAdmin, KeycloakOpenIDConnection
-from slugify import slugify
-from sqlalchemy import Column, Integer, String, create_engine, select, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine.base import Engine
-from sqlalchemy.orm import Session, declarative_base
 
 _LOCAL_NAMES = [
     "host.docker.internal",
     "localhost",
 ]
-
-_DAGSTER_STATE_DBNAME = "moderate_workflows_dagster_state"
-_DAGSTER_STATE_TABLE_KEYVALUES = "moderate_workflows_key_values"
 
 
 class KeycloakResource(ConfigurableResource):
@@ -51,17 +46,6 @@ class KeycloakResource(ConfigurableResource):
         return self.get_keycloak_admin().users_count()
 
 
-Base = declarative_base()
-
-
-class KeyValue(Base):
-    __tablename__ = _DAGSTER_STATE_TABLE_KEYVALUES
-
-    id = Column(Integer, primary_key=True)
-    key = Column(String, index=True, unique=True)
-    value = Column(String)
-
-
 class PostgresResource(ConfigurableResource):
     host: str
     port: int
@@ -88,54 +72,6 @@ class PostgresResource(ConfigurableResource):
             logger.info("Created database %s", name)
         except sqlalchemy.exc.ProgrammingError:
             logger.debug("Database %s already exists", name)
-
-    def ensure_dagster_state_db(self):
-        self.create_database(name=_DAGSTER_STATE_DBNAME)
-        engine = self.create_engine(db_name=_DAGSTER_STATE_DBNAME)
-        Base.metadata.create_all(bind=engine, checkfirst=True)
-
-    def build_state_key(
-        self, key: str, namespace: Optional[str] = None, slug_key: bool = True
-    ) -> str:
-        key_part = slugify(key) if slug_key else key
-        return "{}:{}".format(slugify(namespace), key_part) if namespace else key_part
-
-    def get_state(
-        self, key: str, namespace: Optional[str] = None, slug_key: bool = True
-    ) -> Union[str, None]:
-        logger = get_dagster_logger()
-        self.ensure_dagster_state_db()
-        key_ns = self.build_state_key(key=key, namespace=namespace, slug_key=slug_key)
-        logger.debug("Reading state key: %s", key_ns)
-
-        with Session(self.create_engine(db_name=_DAGSTER_STATE_DBNAME)) as session:
-            stmt = select(KeyValue).where(KeyValue.key == key_ns)
-            kv = session.execute(stmt).scalars().one_or_none()
-            return kv.value if kv else None
-
-    def set_state(
-        self,
-        key: str,
-        value: str,
-        namespace: Optional[str] = None,
-        slug_key: bool = True,
-    ):
-        logger = get_dagster_logger()
-        self.ensure_dagster_state_db()
-        key_ns = self.build_state_key(key=key, namespace=namespace, slug_key=slug_key)
-        logger.debug("Writing state key: %s - %s", key_ns, value)
-
-        with Session(self.create_engine(db_name=_DAGSTER_STATE_DBNAME)) as session:
-            stmt = select(KeyValue).where(KeyValue.key == key_ns)
-            kv = session.execute(stmt).scalars().one_or_none()
-
-            if kv is None:
-                kv = KeyValue(key=key_ns, value=value)
-            else:
-                kv.value = value
-
-            session.add(kv)
-            session.commit()
 
 
 class OpenMetadataResource(ConfigurableResource):

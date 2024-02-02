@@ -1,6 +1,5 @@
 import json
 import pprint
-from datetime import datetime
 
 import requests
 from dagster import (
@@ -15,10 +14,11 @@ from dagster import (
 )
 
 from moderate.resources import PlatformAPIResource
-from moderate.trust.utils import ProofResponseDict, wait_for_task
+from moderate.trust.utils import ProofResponseDict, add_rounded_datetime, wait_for_task
 
 _SENSOR_MIN_INTERVAL_SECONDS = 300
-_LIMIT_PER_RUN = 10
+_LIMIT_PER_RUN: int = 5
+_MAX_FREQ_MINUTES: int = 30
 
 
 class ProofCreationTrustConfig(Config):
@@ -112,11 +112,8 @@ def platform_api_asset_object_sensor(
             context.log.warning("Asset object has no key: %s", asset_object)
             continue
 
-        utcnow = datetime.utcnow()
-
-        # At most one run per hour per asset object
-        run_key = "{}_{}_{}_{}_{}".format(
-            asset_obj_key, utcnow.year, utcnow.month, utcnow.day, utcnow.hour
+        run_key = add_rounded_datetime(
+            run_key=asset_obj_key, minutes_interval=_MAX_FREQ_MINUTES
         )
 
         yield RunRequest(
