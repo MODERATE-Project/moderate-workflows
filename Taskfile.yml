@@ -5,7 +5,7 @@ vars:
   MINIKUBE_CPU: 2
   DAGSTER_CHART_VERSION: 1.6.0
   DAGSTER_WEBSERVER_PORT: 8181
-  OPEN_METADATA_CHART_VERSION: 1.2.7
+  OPEN_METADATA_CHART_VERSION: 1.2.8
   OPEN_METADATA_UI_PORT: 8585
   IMAGE_LOCAL_NAME: moderate-dagster
   IMAGE_REMOTE_NAME: agmangas/moderate-dagster
@@ -20,7 +20,7 @@ vars:
   OPEN_METADATA_PRIVKEY: om_privkey.der
   OPEN_METADATA_PUBKEY: om_pubkey.der
   OPEN_METADATA_PEM_PRIVKEY: om_privkey.pem
-  MODERATE_CLI_IMAGE: docker.io/agmangas/moderate-cli:0.2.4
+  MODERATE_CLI_IMAGE: docker.io/agmangas/moderate-cli:0.4.0
   KEYCLOAK_INIT_SLEEP_SECONDS: 40
   MAIN_IP_ADDRESS:
     sh: ip route get 1.2.3.4 | awk '{print $7}'
