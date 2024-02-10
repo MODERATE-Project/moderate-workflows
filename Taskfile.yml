@@ -20,7 +20,7 @@ vars:
   OPEN_METADATA_PRIVKEY: om_privkey.der
   OPEN_METADATA_PUBKEY: om_pubkey.der
   OPEN_METADATA_PEM_PRIVKEY: om_privkey.pem
-  MODERATE_CLI_IMAGE: docker.io/agmangas/moderate-cli:0.4.0
+  MODERATE_CLI_IMAGE: docker.io/agmangas/moderate-cli:0.5.1
   KEYCLOAK_INIT_SLEEP_SECONDS: 40
   MAIN_IP_ADDRESS:
     sh: ip route get 1.2.3.4 | awk '{print $7}'
@@ -79,7 +79,6 @@ tasks:
         -e KEYCLOAK_URL={{.KEYCLOAK_URL}}
         -e APISIX_CLIENT_SECRET={{.APISIX_CLIENT_SECRET}}
         -e OPEN_METADATA_CLIENT_ID={{.OPEN_METADATA_CLIENT_ID}}
-        -e OPEN_METADATA_CLIENT_SECRET={{.OPEN_METADATA_CLIENT_SECRET}}
         -e OPEN_METADATA_ROOT_URL={{.OPEN_METADATA_ROOT_URL}}
         -e MODERATE_REALM={{.MODERATE_REALM}}
         {{.MODERATE_CLI_IMAGE}} /bin/bash -c
