@@ -1,6 +1,18 @@
 import pprint
+import re
+from typing import List
 
-from dagster import Config, asset, define_asset_job, get_dagster_logger
+from dagster import (
+    Config,
+    DynamicOut,
+    DynamicOutput,
+    asset,
+    define_asset_job,
+    get_dagster_logger,
+    job,
+    op,
+)
+from sqlalchemy import text
 
 from moderate.openmetadata import run_metadata_workflow, run_profiler_workflow
 from moderate.openmetadata.configs.datalake import (
@@ -20,15 +32,40 @@ from moderate.resources import (
 
 class PostgresIngestionConfig(Config):
     source_service_name: str = "platform-postgres"
-    default_dbname: str = "keycloak"
+    ignored_dbnames: List[str] = ["template.*", "postgres"]
 
 
-@asset
+@op(out=DynamicOut())
+def find_postgres_databases(
+    config: PostgresIngestionConfig, postgres: PostgresResource
+) -> List[DynamicOutput[str]]:
+    """Finds all Postgres databases and filters out ignored ones."""
+
+    logger = get_dagster_logger()
+
+    with postgres.create_engine().connect() as conn:
+        result = conn.execute(text("SELECT datname FROM pg_database;"))
+        dbnames = [row[0] for row in result]
+
+        logger.debug("Found Postgres databases: %s", dbnames)
+
+        dbnames = [
+            dbname
+            for dbname in dbnames
+            if not any(re.match(pattern, dbname) for pattern in config.ignored_dbnames)
+        ]
+
+        logger.debug("Filtered Postgres databases: %s", dbnames)
+        return [DynamicOutput(dbname, mapping_key=dbname) for dbname in dbnames]
+
+
+@op
 def postgres_metadata_ingestion(
     config: PostgresIngestionConfig,
     postgres: PostgresResource,
     open_metadata: OpenMetadataResource,
-) -> None:
+    dbname: str,
+) -> str:
     """Ingests metadata from Postgres into Open Metadata."""
 
     logger = get_dagster_logger()
@@ -39,9 +76,10 @@ def postgres_metadata_ingestion(
         postgres_pass=postgres.password,
         postgres_host=postgres.host,
         postgres_port=postgres.port,
-        postgres_db=config.default_dbname,
+        postgres_db=dbname,
         open_metadata_host_port=open_metadata.host_port,
         open_metadata_token=open_metadata.token,
+        ingest_all_databases=False,
     )
 
     logger.debug(
@@ -50,11 +88,14 @@ def postgres_metadata_ingestion(
 
     run_metadata_workflow(workflow_config)
 
+    return dbname
 
-@asset(deps=[postgres_metadata_ingestion])
+
+@op
 def postgres_profiler_ingestion(
     config: PostgresIngestionConfig,
     open_metadata: OpenMetadataResource,
+    dbname: str,
 ) -> None:
     """Ingests profiling metadata from Postgres into Open Metadata."""
 
@@ -62,6 +103,7 @@ def postgres_profiler_ingestion(
 
     workflow_config = build_postgres_profiler_config(
         source_service_name=config.source_service_name,
+        postgres_db=dbname,
         open_metadata_host_port=open_metadata.host_port,
         open_metadata_token=open_metadata.token,
     )
@@ -73,13 +115,18 @@ def postgres_profiler_ingestion(
     run_profiler_workflow(workflow_config)
 
 
-postgres_ingestion_job = define_asset_job(
-    name="postgres_ingestion_job",
-    selection=[
-        postgres_metadata_ingestion,
-        postgres_profiler_ingestion,
-    ],
+@job(
+    config={
+        "execution": {
+            "config": {
+                "multiprocess": {"max_concurrent": 1},
+            }
+        }
+    }
 )
+def postgres_ingestion_job():
+    dbnames = find_postgres_databases()
+    dbnames.map(postgres_metadata_ingestion).map(postgres_profiler_ingestion).collect()
 
 
 class DatalakeIngestionConfig(Config):
