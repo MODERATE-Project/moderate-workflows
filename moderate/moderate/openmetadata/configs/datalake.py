@@ -2,9 +2,20 @@
 https://docs.open-metadata.org/v1.2.x/connectors/database/datalake/yaml
 """
 
+import hashlib
 from typing import Optional
 
+from slugify import slugify
+
 from moderate.openmetadata.configs.common import build_workflow_config
+
+
+def get_datalake_service_name(base_service_name: str, objects_base_prefix: str) -> str:
+    sha256_hash = hashlib.sha256()
+    sha256_hash.update(objects_base_prefix.encode("utf-8"))
+    unique_key = sha256_hash.hexdigest()
+    human_name = slugify(f"{base_service_name}-{objects_base_prefix}")
+    return f"{human_name}-{unique_key}"
 
 
 def _build_service_connection_config(
@@ -43,6 +54,7 @@ def build_datalake_s3_metadata_config(
     secret_access_key: str,
     region: str,
     endpoint_url: str,
+    objects_base_prefix: str,
     prefix: Optional[str] = None,
     mark_deleted_tables: bool = True,
     include_tables: bool = True,
@@ -50,6 +62,8 @@ def build_datalake_s3_metadata_config(
     logger_level: str = "INFO",
     pipeline_name: str = "metadata",
 ) -> dict:
+    service_name = get_datalake_service_name(source_service_name, objects_base_prefix)
+
     service_connection_config = _build_service_connection_config(
         bucket_name=bucket_name,
         access_key_id=access_key_id,
@@ -59,10 +73,12 @@ def build_datalake_s3_metadata_config(
         prefix=prefix,
     )
 
+    objects_base_prefix = objects_base_prefix.rstrip("/")
+
     data = {
         "source": {
             "type": "datalake",
-            "serviceName": source_service_name,
+            "serviceName": service_name,
             "serviceConnection": {"config": service_connection_config},
             "sourceConfig": {
                 "config": {
@@ -70,6 +86,10 @@ def build_datalake_s3_metadata_config(
                     "markDeletedTables": mark_deleted_tables,
                     "includeTables": include_tables,
                     "includeViews": include_views,
+                    "useFqnForFiltering": True,
+                    "tableFilterPattern": {
+                        "includes": [f".*{objects_base_prefix}/.*$"]
+                    },
                 }
             },
         },
@@ -77,7 +97,7 @@ def build_datalake_s3_metadata_config(
             "type": "metadata-rest",
             "config": {},
         },
-        "ingestionPipelineFQN": f"{source_service_name}.{pipeline_name}",
+        "ingestionPipelineFQN": f"{service_name}.{pipeline_name}",
     }
 
     workflow_config = build_workflow_config(
@@ -100,6 +120,7 @@ def build_datalake_s3_profiler_config(
     secret_access_key: str,
     region: str,
     endpoint_url: str,
+    objects_base_prefix: str,
     prefix: Optional[str] = None,
     include_views: bool = True,
     logger_level: str = "INFO",
@@ -109,6 +130,8 @@ def build_datalake_s3_profiler_config(
     profile_sample: int = 5000,
     profile_sample_type: str = "ROWS",
 ) -> dict:
+    service_name = get_datalake_service_name(source_service_name, objects_base_prefix)
+
     service_connection_config = _build_service_connection_config(
         bucket_name=bucket_name,
         access_key_id=access_key_id,
@@ -121,7 +144,7 @@ def build_datalake_s3_profiler_config(
     data = {
         "source": {
             "type": "datalake",
-            "serviceName": source_service_name,
+            "serviceName": service_name,
             "serviceConnection": {"config": service_connection_config},
             "sourceConfig": {
                 "config": {
@@ -142,7 +165,7 @@ def build_datalake_s3_profiler_config(
             "type": "metadata-rest",
             "config": {},
         },
-        "ingestionPipelineFQN": f"{source_service_name}.{pipeline_name}",
+        "ingestionPipelineFQN": f"{service_name}.{pipeline_name}",
     }
 
     workflow_config = build_workflow_config(

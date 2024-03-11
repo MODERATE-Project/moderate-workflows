@@ -1,17 +1,10 @@
 import pprint
 import re
+import uuid
 from typing import List
 
-from dagster import (
-    Config,
-    DynamicOut,
-    DynamicOutput,
-    asset,
-    define_asset_job,
-    get_dagster_logger,
-    job,
-    op,
-)
+from dagster import Config, DynamicOut, DynamicOutput, get_dagster_logger, job, op
+from slugify import slugify
 from sqlalchemy import text
 
 from moderate.openmetadata import run_metadata_workflow, run_profiler_workflow
@@ -28,6 +21,13 @@ from moderate.resources import (
     PostgresResource,
     S3ObjectStorageResource,
 )
+
+
+def get_mapping_key(val: str) -> str:
+    key = uuid.uuid5(uuid.NAMESPACE_URL, val).hex
+    key_prefix = slugify(val).replace("-", "_")
+    key = f"{key_prefix}_{key}"
+    return key
 
 
 class PostgresIngestionConfig(Config):
@@ -56,7 +56,11 @@ def find_postgres_databases(
         ]
 
         logger.debug("Filtered Postgres databases: %s", dbnames)
-        return [DynamicOutput(dbname, mapping_key=dbname) for dbname in dbnames]
+
+        return [
+            DynamicOutput(dbname, mapping_key=get_mapping_key(dbname))
+            for dbname in dbnames
+        ]
 
 
 @op
@@ -133,12 +137,38 @@ class DatalakeIngestionConfig(Config):
     source_service_name: str = "platform-datalake"
 
 
-@asset
+@op(out=DynamicOut())
+def find_datalake_prefixes(
+    s3_object_storage: S3ObjectStorageResource,
+) -> List[DynamicOutput[str]]:
+    logger = get_dagster_logger()
+    s3_client = s3_object_storage.get_client()
+    paginator = s3_client.get_paginator("list_objects_v2")
+    prefixes = []
+
+    for result in paginator.paginate(
+        Bucket=s3_object_storage.bucket_name, Delimiter="/"
+    ):
+        for prefix in result.get("CommonPrefixes", []):
+            val = prefix.get("Prefix")
+            prefixes.append(DynamicOutput(value=val, mapping_key=get_mapping_key(val)))
+
+    logger.info(
+        "Found %s prefixes in the bucket %s",
+        len(prefixes),
+        s3_object_storage.bucket_name,
+    )
+
+    return prefixes
+
+
+@op
 def datalake_metadata_ingestion(
     config: DatalakeIngestionConfig,
     s3_object_storage: S3ObjectStorageResource,
     open_metadata: OpenMetadataResource,
-) -> None:
+    prefix: str,
+) -> str:
     """Ingests metadata from an S3-compatible datalake into Open Metadata."""
 
     logger = get_dagster_logger()
@@ -152,6 +182,7 @@ def datalake_metadata_ingestion(
         secret_access_key=s3_object_storage.secret_access_key,
         region=s3_object_storage.region,
         endpoint_url=s3_object_storage.endpoint_url,
+        objects_base_prefix=prefix,
     )
 
     logger.debug(
@@ -160,12 +191,15 @@ def datalake_metadata_ingestion(
 
     run_metadata_workflow(workflow_config)
 
+    return prefix
 
-@asset(deps=[datalake_metadata_ingestion])
+
+@op
 def datalake_profiler_ingestion(
     config: DatalakeIngestionConfig,
     s3_object_storage: S3ObjectStorageResource,
     open_metadata: OpenMetadataResource,
+    prefix: str,
 ) -> None:
     """Ingests profiling metadata from an S3-compatible datalake into Open Metadata."""
 
@@ -180,21 +214,25 @@ def datalake_profiler_ingestion(
         secret_access_key=s3_object_storage.secret_access_key,
         region=s3_object_storage.region,
         endpoint_url=s3_object_storage.endpoint_url,
+        objects_base_prefix=prefix,
     )
 
     logger.debug(
         "Running profiler ingestion workflow:\n%s", pprint.pformat(workflow_config)
     )
 
-    # We don't have too much control over the data in the datalake, so we don't want to
-    # fail the whole workflow if the profiler fails. Instead, we'll just log the error.
-    run_profiler_workflow(workflow_config, log_instead_of_raise=True)
+    run_profiler_workflow(workflow_config, log_instead_of_raise=False)
 
 
-datalake_ingestion_job = define_asset_job(
-    name="datalake_ingestion_job",
-    selection=[
-        datalake_metadata_ingestion,
-        datalake_profiler_ingestion,
-    ],
+@job(
+    config={
+        "execution": {
+            "config": {
+                "multiprocess": {"max_concurrent": 2},
+            }
+        }
+    }
 )
+def datalake_ingestion_job():
+    prefixes = find_datalake_prefixes()
+    prefixes.map(datalake_metadata_ingestion).map(datalake_profiler_ingestion).collect()

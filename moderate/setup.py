@@ -22,6 +22,7 @@ setup(
         "trino>=0.321.0,<=0.327",
         "requests>=2.0,<3.0",
         "python-slugify>=8.0,<9.0",
+        "boto3>=1.29,<2.0",
     ],
     extras_require={
         "dev": [

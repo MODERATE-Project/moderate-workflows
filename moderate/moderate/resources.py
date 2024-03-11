@@ -1,5 +1,6 @@
-from typing import List, Union
+from typing import Any, List, Union
 
+import boto3
 import requests
 import sqlalchemy.exc
 from dagster import ConfigurableResource, get_dagster_logger
@@ -102,6 +103,17 @@ class S3ObjectStorageResource(ConfigurableResource):
     region: str
     bucket_name: str
     endpoint_url: str
+
+    def get_client(self) -> Any:
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=self.endpoint_url,
+            region_name=self.region,
+            aws_access_key_id=self.access_key_id,
+            aws_secret_access_key=self.secret_access_key,
+        )
+
+        return s3_client
 
 
 class PlatformAPIResource(ConfigurableResource):
