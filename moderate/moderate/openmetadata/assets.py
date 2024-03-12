@@ -22,6 +22,9 @@ from moderate.resources import (
     S3ObjectStorageResource,
 )
 
+_MAX_CONCURRENT_POSTGRES = 2
+_MAX_CONCURRENT_DATALAKE = 2
+
 
 def get_mapping_key(val: str) -> str:
     key = uuid.uuid5(uuid.NAMESPACE_URL, val).hex
@@ -123,7 +126,7 @@ def postgres_profiler_ingestion(
     config={
         "execution": {
             "config": {
-                "multiprocess": {"max_concurrent": 1},
+                "multiprocess": {"max_concurrent": _MAX_CONCURRENT_POSTGRES},
             }
         }
     }
@@ -228,7 +231,7 @@ def datalake_profiler_ingestion(
     config={
         "execution": {
             "config": {
-                "multiprocess": {"max_concurrent": 2},
+                "multiprocess": {"max_concurrent": _MAX_CONCURRENT_DATALAKE},
             }
         }
     }

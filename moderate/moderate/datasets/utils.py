@@ -7,7 +7,7 @@ import shutil
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import IO, Any, ContextManager, Dict, List, Optional, Tuple
+from typing import IO, Any, Dict, Generator, List, Optional, Tuple
 
 import pandas as pd
 import requests
@@ -23,8 +23,8 @@ from slugify import slugify
 
 from moderate.datasets.enums import DataFormats
 from moderate.enums import StateNamespaces
-from moderate.state import PostgresState
 from moderate.resources import PlatformAPIResource, PostgresResource
+from moderate.state import PostgresState
 
 
 @dataclass
@@ -68,7 +68,9 @@ class GitAssetForPlatform:
     @property
     def state_key(self) -> str:
         return (
-            "{}-{}".format(self.parent_asset_name, self.name)
+            "{}-{}-{}".format(
+                self.parent_asset_name, self.name, self.format.value.lower()
+            )
             if self.parent_asset_name
             else self.name
         )
@@ -97,7 +99,11 @@ ListOfGitAssetForPlatformDagsterType = DagsterType(
 def dataset_name_from_file_path(
     file_path: str, sibling_paths: Optional[List[str]] = None
 ) -> str:
-    common_prefix = os.path.commonprefix(sibling_paths) if sibling_paths else ""
+    if not sibling_paths or (len(sibling_paths) == 1 and file_path == sibling_paths[0]):
+        common_prefix = ""
+    else:
+        common_prefix = os.path.commonprefix(sibling_paths)
+
     file_path = file_path.replace(common_prefix, "", 1)
     path_part, _ = os.path.splitext(file_path)
     return slugify(path_part)
@@ -106,7 +112,7 @@ def dataset_name_from_file_path(
 @contextmanager
 def clone_git_repo(
     config: GitRepo, lfs: bool = False, lfs_globs: Optional[List[str]] = None
-) -> ContextManager[ClonedRepo]:
+) -> Generator[ClonedRepo, None, None]:
     """Context manager that clones a git repository and yields the temporal directory."""
 
     git_dir = str(uuid.uuid4())
@@ -292,6 +298,7 @@ def clone_and_parse_datasets(
     git_lfs_globs: Optional[List[str]] = None,
     pd_read_kwargs: Optional[Dict[str, Dict]] = None,
     platform_asset_name: Optional[str] = None,
+    to_parquet: bool = True,
 ) -> Output[List[GitAssetForPlatform]]:
     logger = get_dagster_logger()
     git_repo = GitRepo(repo_url=git_url, tree_ish=git_treeish)
@@ -302,13 +309,15 @@ def clone_and_parse_datasets(
         file_paths = [
             os.path.abspath(file_path)
             for dataset_path in git_file_globs
-            for file_path in glob.glob(os.path.join(cloned_repo.repo_dir, dataset_path))
+            for file_path in glob.glob(
+                os.path.join(cloned_repo.repo_dir, dataset_path), recursive=True
+            )
             if os.path.exists(os.path.abspath(file_path))
         ]
 
         logger.debug("Found the following files:\n%s", pprint.pformat(file_paths))
 
-        dfs = {}
+        dfs: Dict[str, pd.DataFrame] = {}
 
         for fpath in file_paths:
             read_kwargs_candidates = (
@@ -333,8 +342,6 @@ def clone_and_parse_datasets(
         for fpath, df in dfs.items():
             logger.debug("Sample of DataFrame '%s':\n%s", fpath, df.head())
 
-        parquet_bytes = {fpath: df.to_parquet(path=None) for fpath, df in dfs.items()}
-
         asset_metadata = {
             "repo_url": cloned_repo.repo_url,
             "commit_sha": cloned_repo.commit_sha,
@@ -343,29 +350,39 @@ def clone_and_parse_datasets(
         output_value = []
         output_metadata = {**asset_metadata}
 
-        for fpath, data in parquet_bytes.items():
+        for fpath, df in dfs.items():
             dataset_name = dataset_name_from_file_path(
                 file_path=fpath, sibling_paths=file_paths
             )
 
-            output_value.append(
-                GitAssetForPlatform(
-                    data=data,
-                    name=dataset_name,
-                    format=DataFormats.PARQUET,
-                    metadata=asset_metadata,
-                    series_id=dataset_name,
-                    parent_asset_name=platform_asset_name,
-                )
-            )
+            out_kwargs = {
+                "name": dataset_name,
+                "metadata": asset_metadata,
+                "series_id": dataset_name,
+                "parent_asset_name": platform_asset_name,
+            }
 
             output_metadata.update(
-                {
-                    f"{dataset_name}_size_MiB": len(data) / (1024.0**2),
-                    f"{dataset_name}_preview": MetadataValue.md(
-                        dfs[fpath].head().to_markdown()
-                    ),
-                }
+                {f"{dataset_name}_preview": MetadataValue.md(df.head().to_markdown())}
+            )
+
+            if to_parquet:
+                logger.info("Converting DataFrame '%s' to Parquet", dataset_name)
+                parquet_bytes = df.to_parquet(path=None)
+
+                output_value.append(
+                    GitAssetForPlatform(
+                        data=parquet_bytes, format=DataFormats.PARQUET, **out_kwargs
+                    )
+                )
+
+            logger.info("Converting DataFrame '%s' to CSV", dataset_name)
+            csv_bytes = df.to_csv(path_or_buf=None).encode("utf-8")
+
+            output_value.append(
+                GitAssetForPlatform(
+                    data=csv_bytes, format=DataFormats.CSV, **out_kwargs
+                )
             )
 
         return Output(output_value, metadata=output_metadata)
@@ -381,7 +398,11 @@ def upload_list_of_git_assets(
     output_metadata = {}
 
     for asset_for_platform in list_of_git_assets:
-        logger.info("Uploading asset for platform: %s", asset_for_platform.name)
+        logger.info(
+            "Uploading asset for platform: %s (%s)",
+            asset_for_platform.name,
+            asset_for_platform.file_name,
+        )
 
         uploaded_obj, obj_meta = upload_git_asset_for_platform(
             asset_for_platform=asset_for_platform,

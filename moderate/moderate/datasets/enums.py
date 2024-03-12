@@ -8,3 +8,4 @@ class PlatformBuiltinAssetNames(enum.Enum):
 
 class DataFormats(enum.Enum):
     PARQUET = "parquet"
+    CSV = "csv"
