@@ -34,7 +34,7 @@ def building_stock(
         git_treeish=config.git_treeish,
         git_file_globs=config.dataset_paths,
         pd_read_kwargs={
-            "MODERATE-D3.1-Dataset2_3.csv": {
+            "v1.0_Data_T3.1_Dynamicanalysis_PVanalysis.csv": {
                 "skiprows": 1,
                 "sep": ";",
                 "decimal": ",",
