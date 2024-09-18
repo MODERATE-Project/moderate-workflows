@@ -1,6 +1,6 @@
 FROM python:3.10-bullseye
-ENV PATH_CODE /code
-ENV PATH_LOCAL_PKG moderate
+ENV PATH_CODE=/code
+ENV PATH_LOCAL_PKG=moderate
 
 RUN apt-get update -y \
     && DEBIANFRONTEND=noninteractive apt-get install -y git-lfs \
