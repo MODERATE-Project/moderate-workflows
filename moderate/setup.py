@@ -1,7 +1,7 @@
 from setuptools import find_packages, setup
 
-_VERSION_DAGSTER = "1.6.0"
-_VERSION_DAGSTER_EXT = "0.22.0"
+_VERSION_DAGSTER = "1.8.7"
+_VERSION_DAGSTER_EXT = "0.24.7"
 
 setup(
     name="moderate",
@@ -15,7 +15,7 @@ setup(
         "numpy>=1.0,<2.0",
         "python-keycloak>=2.16.1,<3.0",
         "sh==2.0.6",
-        "openmetadata-ingestion[postgres,datalake-s3,datalake-gcp]==1.3.1",
+        "openmetadata-ingestion[postgres,datalake-s3,datalake-gcp,datalake-azure]==1.5.4",
         "google-cloud-storage>=2.10,<3.0",
         "sqllineage>=1.4,<1.5",
         "SQLAlchemy>=1.4,<1.5",
