@@ -8,7 +8,7 @@ vars:
   OPEN_METADATA_CHART_VERSION: 1.3.1
   OPEN_METADATA_UI_PORT: 8585
   IMAGE_LOCAL_NAME: moderate-dagster
-  IMAGE_REMOTE_NAME: agmangas/moderate-dagster
+  IMAGE_REMOTE_NAME: localhost:5000/moderate-dagster
   IMAGE_REMOTE_TAG: latest
   VENV_NAME: .venv
   SECRETS_ENV_FILE: dagster-secrets.env
@@ -26,6 +26,7 @@ vars:
     sh: ip route get 1.2.3.4 | awk '{print $7}'
   OPEN_METADATA_ROOT_URL: http://{{.MAIN_IP_ADDRESS}}:8585
   KEYCLOAK_URL: http://{{.MAIN_IP_ADDRESS}}:8080
+  REGISTRY_TUNNEL_CONTAINER_NAME: minikube-registry-tunnel
 
 env:
   IMAGE_REMOTE_NAME: "{{.IMAGE_REMOTE_NAME}}"
@@ -40,6 +41,7 @@ tasks:
     desc: Clean up the dev environment
     cmds:
       - minikube delete
+      - docker rm -f {{.REGISTRY_TUNNEL_CONTAINER_NAME}}
       - docker compose -f {{.ROOT_DIR}}/docker-compose.dev.yml down -v
       - cmd: rm {{.ROOT_DIR}}/{{.VALUES_DAGSTER}}
         ignore_error: true
@@ -87,7 +89,7 @@ tasks:
         moderatecli create-open-metadata-client"
 
   compose-up:
-    desc: Start the Compose stack
+    desc: Start the Compose stack with the dependency services for development
     cmds:
       - docker compose -f {{.ROOT_DIR}}/docker-compose.dev.yml up -d --build --wait
       - echo "🕐 Waiting for Keycloak to start..."
@@ -95,9 +97,20 @@ tasks:
       - task: moderate-cli-init-keycloak
 
   minikube-start:
-    desc: Start minikube
+    desc: Create the Minikube K8s cluster
+    vars:
+      TUNNEL_SLEEP_SECONDS: 10
     cmds:
       - minikube start --memory={{.MINIKUBE_MEM}} --cpus={{.MINIKUBE_CPU}}
+      - minikube addons enable registry
+      # https://minikube.sigs.k8s.io/docs/handbook/registry
+      - >
+        docker run -d
+        --name {{.REGISTRY_TUNNEL_CONTAINER_NAME}}
+        --network=host
+        alpine ash -c "apk add socat && socat TCP-LISTEN:5000,reuseaddr,fork TCP:$(minikube ip):5000"
+      - echo "🕐 Waiting for Minikube registry tunnel..."
+      - sleep {{.TUNNEL_SLEEP_SECONDS}}
     status:
       - minikube status
 
@@ -222,9 +235,9 @@ tasks:
       WAIT_TIMEOUT_SECS: 600
       WAIT_PODS_SECS: 10
     cmds:
+      - task: minikube-start
       - task: push-code-image
       - task: compose-up
-      - task: minikube-start
       - task: install-helm-dagster
       - task: install-helm-open-metadata
       - echo "🕐 Waiting for all pods to be ready (feel free to Ctrl+C)"
