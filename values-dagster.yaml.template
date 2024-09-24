@@ -3,8 +3,8 @@ dagster-user-deployments:
   deployments:
     - name: "k8s-code-location-moderate"
       image:
-        repository: "${IMAGE_REMOTE_NAME}"
-        tag: ${IMAGE_REMOTE_TAG}
+        repository: "${CODE_LOCATION_MODERATE_REMOTE_NAME}"
+        tag: ${CODE_LOCATION_MODERATE_REMOTE_TAG}
         pullPolicy: Always
       dagsterApiGrpcArgs:
         - "--package-name"

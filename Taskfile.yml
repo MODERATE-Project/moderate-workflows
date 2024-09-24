@@ -7,9 +7,9 @@ vars:
   DAGSTER_WEBSERVER_PORT: 8181
   OPEN_METADATA_CHART_VERSION: 1.5.4
   OPEN_METADATA_UI_PORT: 8585
-  IMAGE_LOCAL_NAME: moderate-dagster
-  IMAGE_REMOTE_NAME: localhost:5000/moderate-dagster
-  IMAGE_REMOTE_TAG: latest
+  CODE_LOCATION_MODERATE_LOCAL_NAME: moderate-dagster
+  CODE_LOCATION_MODERATE_REMOTE_NAME: localhost:5000/moderate-dagster
+  CODE_LOCATION_MODERATE_REMOTE_TAG: latest
   VENV_NAME: .venv
   SECRETS_ENV_FILE: dagster-secrets.env
   SECRETS_NAME: dagster-secrets
@@ -29,8 +29,8 @@ vars:
   REGISTRY_TUNNEL_CONTAINER_NAME: minikube-registry-tunnel
 
 env:
-  IMAGE_REMOTE_NAME: "{{.IMAGE_REMOTE_NAME}}"
-  IMAGE_REMOTE_TAG: "{{.IMAGE_REMOTE_TAG}}"
+  CODE_LOCATION_MODERATE_REMOTE_NAME: "{{.CODE_LOCATION_MODERATE_REMOTE_NAME}}"
+  CODE_LOCATION_MODERATE_REMOTE_TAG: "{{.CODE_LOCATION_MODERATE_REMOTE_TAG}}"
   OPEN_METADATA_ROOT_URL: "{{.OPEN_METADATA_ROOT_URL}}"
   KEYCLOAK_URL: "{{.KEYCLOAK_URL}}"
 
@@ -99,7 +99,7 @@ tasks:
   minikube-start:
     desc: Create the Minikube K8s cluster
     vars:
-      TUNNEL_SLEEP_SECONDS: 10
+      TUNNEL_SLEEP_SECONDS: 40
     cmds:
       - minikube start --memory={{.MINIKUBE_MEM}} --cpus={{.MINIKUBE_CPU}}
       - minikube addons enable registry
@@ -223,11 +223,23 @@ tasks:
         -f {{.ROOT_DIR}}/{{.VALUES_OPEN_METADATA}}
 
   push-code-image:
-    desc: Push the code image to Docker Hub
+    desc: Build and push a code location image to the image registry
+    vars:
+      requires: [LOCAL_NAME, REMOTE_NAME, REMOTE_TAG, CODE_PATH]
     cmds:
-      - docker build -t {{.IMAGE_LOCAL_NAME}} {{.ROOT_DIR}}
-      - docker tag {{.IMAGE_LOCAL_NAME}} {{.IMAGE_REMOTE_NAME}}:{{.IMAGE_REMOTE_TAG}}
-      - docker push {{.IMAGE_REMOTE_NAME}}:{{.IMAGE_REMOTE_TAG}}
+      - docker build -t {{.LOCAL_NAME}} {{.CODE_PATH}}
+      - docker tag {{.LOCAL_NAME}} {{.REMOTE_NAME}}:{{.REMOTE_TAG}}
+      - docker push {{.REMOTE_NAME}}:{{.REMOTE_TAG}}
+
+  push-code-image-moderate:
+    desc: Build and push the moderate code location image to the image registry
+    cmds:
+      - task: push-code-image
+        vars:
+          LOCAL_NAME: "{{.CODE_LOCATION_MODERATE_LOCAL_NAME}}"
+          REMOTE_NAME: "{{.CODE_LOCATION_MODERATE_REMOTE_NAME}}"
+          REMOTE_TAG: "{{.CODE_LOCATION_MODERATE_REMOTE_TAG}}"
+          CODE_PATH: "{{.ROOT_DIR}}/moderate"
 
   start-dev-k8s:
     desc: Start the dev environment in the local Kubernetes cluster
@@ -236,7 +248,7 @@ tasks:
       WAIT_PODS_SECS: 10
     cmds:
       - task: minikube-start
-      - task: push-code-image
+      - task: push-code-image-moderate
       - task: compose-up
       - task: install-helm-dagster
       - task: install-helm-open-metadata

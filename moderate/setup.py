@@ -1,5 +1,6 @@
 from setuptools import find_packages, setup
 
+# The version of the Dagster dependencies should be the same for all the code locations
 _VERSION_DAGSTER = "1.8.7"
 _VERSION_DAGSTER_EXT = "0.24.7"
 

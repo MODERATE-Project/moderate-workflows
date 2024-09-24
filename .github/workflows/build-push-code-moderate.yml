@@ -1,4 +1,4 @@
-name: Build and push an image to Google Artifact Registry (GAR)
+name: Build and push the moderate code location image to Google Artifact Registry (GAR)
 
 on:
   push:
@@ -13,6 +13,7 @@ jobs:
       gar_location: ${{ vars.DEFAULT_GAR_LOCATION }}
       gar_repo: ${{ vars.DEFAULT_GAR_REPOSITORY }}
       image_name: moderate-workflows
+      working_dir: moderate
     secrets:
       wif_provider: ${{ secrets.WIF_PROVIDER }}
       wif_service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
