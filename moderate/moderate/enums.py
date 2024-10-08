@@ -7,6 +7,7 @@ class ResourceNames(enum.Enum):
     OPEN_METADATA = "open_metadata"
     S3_OBJECT_STORAGE = "s3_object_storage"
     PLATFORM_API = "platform_api"
+    RABBIT = "rabbit"
 
 
 class Variables(enum.Enum):
@@ -26,15 +27,20 @@ class Variables(enum.Enum):
     S3_REGION = "S3_REGION"
     S3_BUCKET_NAME = "S3_BUCKET_NAME"
     S3_ENDPOINT_URL = "S3_ENDPOINT_URL"
+    S3_JOB_OUTPUTS_BUCKET_NAME = "S3_JOB_OUTPUTS_BUCKET_NAME"
     API_BASE_URL = "API_BASE_URL"
     API_USERNAME = "API_USERNAME"
     API_PASSWORD = "API_PASSWORD"
+    RABBIT_URL = "RABBIT_URL"
+    RABBIT_MATRIX_PROFILE_QUEUE = "MATRIX_PROFILE_QUEUE"
 
 
 class VariableDefaults(enum.Enum):
     KEYCLOAK_MAIN_REALM_NAME = "moderate"
     S3_ENDPOINT_URL = "https://storage.googleapis.com"
     API_BASE_URL = "https://api.gw.moderate.cloud"
+    RABBIT_MATRIX_PROFILE_QUEUE = "matrix_profile"
+    S3_JOB_OUTPUTS_BUCKET_NAME = "moderate-output-bucket"
 
 
 class StateNamespaces(enum.Enum):

@@ -155,6 +155,7 @@ tasks:
       - echo "S3_REGION={{.S3_REGION}}" >> {{.SECRETS_PATH}}
       - echo "S3_BUCKET_NAME={{.S3_BUCKET_NAME}}" >> {{.SECRETS_PATH}}
       - echo "S3_ENDPOINT_URL={{.S3_ENDPOINT_URL}}" >> {{.SECRETS_PATH}}
+      - echo "RABBIT_URL={{.RABBIT_URL}}" >> {{.SECRETS_PATH}}
 
   create-dagster-secrets:
     desc: Create the Dagster Kubernetes secrets
@@ -315,6 +316,7 @@ tasks:
       S3_REGION: "{{.S3_REGION}}"
       S3_BUCKET_NAME: "{{.S3_BUCKET_NAME}}"
       S3_ENDPOINT_URL: "{{.S3_ENDPOINT_URL}}"
+      RABBIT_URL: "{{.RABBIT_URL}}"
     cmds:
       - cd {{.ROOT_DIR}}/moderate && {{.ROOT_DIR}}/{{.VENV_NAME}}/bin/dagster dev
 
@@ -338,5 +340,5 @@ tasks:
       USER_DEPLOYMENT:
         sh: kubectl get deployments -A -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep dagster-user-deployments
     cmds:
-      - task: push-code-image
+      - task: push-code-image-moderate
       - kubectl rollout restart deployment/{{.USER_DEPLOYMENT}}

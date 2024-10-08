@@ -26,6 +26,8 @@ setup(
         "requests>=2.0,<3.0",
         "python-slugify>=8.0,<9.0",
         "boto3>=1.29,<2.0",
+        "pika>=1.2,<2.0",
+        "pydantic>=2.0,<3.0",
     ],
     extras_require={
         "dev": [

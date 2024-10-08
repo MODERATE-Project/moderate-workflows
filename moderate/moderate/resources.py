@@ -1,10 +1,16 @@
-from typing import Any, List, Union
+import json
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Any, Dict, Generator, List, Union
 
 import boto3
+import pika
 import requests
 import sqlalchemy.exc
 from dagster import ConfigurableResource, get_dagster_logger
 from keycloak import KeycloakAdmin, KeycloakOpenIDConnection
+from pika.adapters.blocking_connection import BlockingChannel
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine.base import Engine
 
@@ -103,6 +109,7 @@ class S3ObjectStorageResource(ConfigurableResource):
     region: str
     bucket_name: str
     endpoint_url: str
+    job_outputs_bucket_name: str
 
     def get_client(self) -> Any:
         s3_client = boto3.client(
@@ -151,6 +158,9 @@ class PlatformAPIResource(ConfigurableResource):
     def url_check_proof_task(self, task_id: Union[str, int]) -> str:
         return self.build_url("asset", "proof", "task", str(task_id))
 
+    def url_patch_job(self, job_id: int) -> str:
+        return self.build_url("job", str(job_id))
+
     def get_token(self) -> str:
         logger = get_dagster_logger()
         url = self.build_url("api", "token")
@@ -172,3 +182,69 @@ class PlatformAPIResource(ConfigurableResource):
 
     def get_authorization_header(self) -> dict:
         return {"Authorization": f"Bearer {self.get_token()}"}
+
+
+@dataclass
+class Rabbit:
+    connection: pika.BlockingConnection
+    channel: BlockingChannel
+
+
+class RabbitResource(ConfigurableResource):
+    rabbit_url: str
+    matrix_profile_queue: str
+
+    @contextmanager
+    def with_rabbit(self) -> Generator[Rabbit, None, None]:
+        logger = get_dagster_logger()
+
+        logger.debug("Connecting to RabbitMQ")
+        parameters = pika.URLParameters(url=self.rabbit_url)
+        connection = pika.BlockingConnection(parameters=parameters)
+        channel = connection.channel()
+
+        yield Rabbit(connection=connection, channel=channel)
+
+        logger.debug("Closing RabbitMQ connection")
+        channel.cancel()
+        channel.close()
+        connection.close()
+
+    def consume_queue_json_messages(
+        self, queue: str, inactivity_timeout_secs: int = 5, timeout_secs: int = 30
+    ) -> Generator[Dict, None, None]:
+        logger = get_dagster_logger()
+
+        start_time = time.time()
+
+        with self.with_rabbit() as rabbit:
+            logger.debug("Consuming messages from queue: %s", queue)
+            rabbit.channel.queue_declare(queue=queue, passive=True)
+
+            for method_frame, properties, body in rabbit.channel.consume(
+                queue=queue, auto_ack=True, inactivity_timeout=inactivity_timeout_secs
+            ):
+                elapsed_time = time.time() - start_time
+
+                if elapsed_time >= timeout_secs:
+                    logger.debug("Timeout reached: %s seconds", timeout_secs)
+                    break
+
+                if None in [method_frame, properties, body]:
+                    continue
+
+                logger.debug(
+                    "Received message (method_frame=%s) (properties=%s)",
+                    method_frame,
+                    properties,
+                )
+
+                try:
+                    msg_data = json.loads(body.decode())
+                except json.JSONDecodeError:
+                    logger.warning("Failed to decode message: %s", body)
+                    continue
+
+                logger.debug("Decoded message: %s", msg_data)
+
+                yield msg_data

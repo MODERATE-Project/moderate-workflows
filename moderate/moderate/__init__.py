@@ -4,6 +4,7 @@ from dagster import Definitions, EnvVar, load_assets_from_modules
 
 import moderate.assets
 import moderate.datasets
+import moderate.matrix_profile
 import moderate.openmetadata.assets
 import moderate.resources
 import moderate.trust
@@ -49,11 +50,22 @@ defs = Definitions(
             endpoint_url=os.getenv(
                 Variables.S3_ENDPOINT_URL.value, VariableDefaults.S3_ENDPOINT_URL.value
             ),
+            job_outputs_bucket_name=os.getenv(
+                Variables.S3_JOB_OUTPUTS_BUCKET_NAME.value,
+                VariableDefaults.S3_JOB_OUTPUTS_BUCKET_NAME.value,
+            ),
         ),
         ResourceNames.PLATFORM_API.value: moderate.resources.PlatformAPIResource(
             base_url=EnvVar(Variables.API_BASE_URL.value),
             username=EnvVar(Variables.API_USERNAME.value),
             password=EnvVar(Variables.API_PASSWORD.value),
+        ),
+        ResourceNames.RABBIT.value: moderate.resources.RabbitResource(
+            rabbit_url=EnvVar(Variables.RABBIT_URL.value),
+            matrix_profile_queue=os.getenv(
+                Variables.RABBIT_MATRIX_PROFILE_QUEUE.value,
+                VariableDefaults.RABBIT_MATRIX_PROFILE_QUEUE.value,
+            ),
         ),
     },
     jobs=[
@@ -61,9 +73,11 @@ defs = Definitions(
         moderate.openmetadata.assets.datalake_ingestion_job,
         moderate.trust.propagate_new_user_to_trust_services_job,
         moderate.trust.create_asset_object_proof_job,
+        moderate.matrix_profile.matrix_profile_job,
     ],
     sensors=[
         moderate.trust.keycloak_user_sensor,
         moderate.trust.platform_api_asset_object_sensor,
+        moderate.matrix_profile.matrix_profile_messages_sensor,
     ],
 )
