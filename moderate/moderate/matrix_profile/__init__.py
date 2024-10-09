@@ -30,9 +30,10 @@ class MatrixProfileJobConfig(Config):
         "europe-west1-docker.pkg.dev/moderate-common/moderate-images/moderate-matrix-profile-workflow"
     )
 
+    # image: str = "localhost:5000/moderate-matrix-profile-workflow"
     tag: str = "main"
     timeout_secs: int = 3600
-    image_pull_policy: str = "Always"
+    image_pull_policy: str = "IfNotPresent"
     output_bucket: str
     file_url: str
     analysis_variable: str
