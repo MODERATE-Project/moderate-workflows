@@ -156,6 +156,7 @@ tasks:
       - echo "S3_BUCKET_NAME={{.S3_BUCKET_NAME}}" >> {{.SECRETS_PATH}}
       - echo "S3_ENDPOINT_URL={{.S3_ENDPOINT_URL}}" >> {{.SECRETS_PATH}}
       - echo "RABBIT_URL={{.RABBIT_URL}}" >> {{.SECRETS_PATH}}
+      - echo "MATRIX_PROFILE_JOB_IMAGE={{.MATRIX_PROFILE_JOB_IMAGE}}" >> {{.SECRETS_PATH}}
 
   create-dagster-secrets:
     desc: Create the Dagster Kubernetes secrets
@@ -317,6 +318,7 @@ tasks:
       S3_BUCKET_NAME: "{{.S3_BUCKET_NAME}}"
       S3_ENDPOINT_URL: "{{.S3_ENDPOINT_URL}}"
       RABBIT_URL: "{{.RABBIT_URL}}"
+      MATRIX_PROFILE_JOB_IMAGE: "{{.MATRIX_PROFILE_JOB_IMAGE}}"
     cmds:
       - cd {{.ROOT_DIR}}/moderate && {{.ROOT_DIR}}/{{.VENV_NAME}}/bin/dagster dev
 

@@ -1,4 +1,5 @@
 import dataclasses
+import os
 import uuid
 from dataclasses import dataclass
 from typing import Any, Union
@@ -18,6 +19,7 @@ from dagster import (
 from dagster_k8s import execute_k8s_job
 from pydantic import BaseModel, ValidationError
 
+from moderate.enums import Variables
 from moderate.resources import (
     PlatformAPIResource,
     RabbitResource,
@@ -30,7 +32,6 @@ class MatrixProfileJobConfig(Config):
         "europe-west1-docker.pkg.dev/moderate-common/moderate-images/moderate-matrix-profile-workflow"
     )
 
-    # image: str = "localhost:5000/moderate-matrix-profile-workflow"
     tag: str = "main"
     timeout_secs: int = 3600
     image_pull_policy: str = "IfNotPresent"
@@ -153,6 +154,7 @@ class MatrixProfileMessage(BaseModel):
     bucket: str
     key: str
     image: Union[str, None] = None
+    tag: Union[str, None] = None
 
 
 _DEFAULT_PRESIGNED_URLS_EXPIRATION_SECS = 3600 * 24
@@ -199,6 +201,13 @@ def matrix_profile_messages_sensor(
 
         if matrix_profile_msg.image:
             conf_kwargs["image"] = matrix_profile_msg.image
+        elif os.getenv(Variables.MATRIX_PROFILE_JOB_IMAGE.value):
+            conf_kwargs["image"] = os.getenv(Variables.MATRIX_PROFILE_JOB_IMAGE.value)
+
+        if matrix_profile_msg.tag:
+            conf_kwargs["tag"] = matrix_profile_msg.tag
+        elif os.getenv(Variables.MATRIX_PROFILE_JOB_TAG.value):
+            conf_kwargs["tag"] = os.getenv(Variables.MATRIX_PROFILE_JOB_TAG.value)
 
         matrix_profile_job_config = MatrixProfileJobConfig(**conf_kwargs)
 
