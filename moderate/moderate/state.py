@@ -1,3 +1,32 @@
+"""PostgreSQL-backed state management for Dagster workflows.
+
+This module provides persistent key-value storage for workflow state tracking,
+enabling idempotent operations and preventing duplicate processing across
+sensor runs and job executions.
+
+The PostgresState class creates a dedicated database for state storage with
+namespace support, automatic key slugification, and batch operations.
+
+Key Features:
+- Persistent state across workflow runs
+- Namespace isolation for different workflows
+- Automatic database and table creation
+- Thread-safe operations via SQLAlchemy sessions
+- Batch read operations for efficiency
+
+Example:
+    state = PostgresState(postgres_resource)
+
+    # Store state with namespace
+    state.set_state("user_123", "processed", namespace="keycloak_users")
+
+    # Retrieve state
+    value = state.get_state("user_123", namespace="keycloak_users")
+
+    # Batch retrieval
+    values = state.get_batch(["user_1", "user_2"], namespace="keycloak_users")
+"""
+
 from typing import Dict, List, Union
 
 from dagster import Optional, get_dagster_logger
@@ -7,8 +36,21 @@ from sqlalchemy.orm import Session, declarative_base
 
 from moderate.resources import PostgresResource
 
-_DAGSTER_STATE_DBNAME = "moderate_workflows_dagster_state"
-_DAGSTER_STATE_TABLE_KEYVALUES = "moderate_workflows_key_values"
+
+class StateConfig:
+    """Configuration constants for PostgreSQL state storage.
+
+    Centralizes database and table naming configuration for the state
+    management system. These values can be customized for different
+    environments or testing scenarios.
+    """
+
+    DATABASE_NAME = "moderate_workflows_dagster_state"
+    TABLE_KEYVALUES = "moderate_workflows_key_values"
+
+
+_DAGSTER_STATE_DBNAME = StateConfig.DATABASE_NAME
+_DAGSTER_STATE_TABLE_KEYVALUES = StateConfig.TABLE_KEYVALUES
 
 Base = declarative_base()
 

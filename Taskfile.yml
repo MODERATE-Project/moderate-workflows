@@ -344,3 +344,18 @@ tasks:
     cmds:
       - task: push-code-image-moderate
       - kubectl rollout restart deployment/{{.USER_DEPLOYMENT}}
+
+  format:
+    desc: Format Python code using black
+    cmds:
+      - "{{.ROOT_DIR}}/{{.VENV_NAME}}/bin/black {{.ROOT_DIR}}/moderate/moderate {{.ROOT_DIR}}/moderate/moderate_tests"
+
+  lint:
+    desc: Lint Python code using ruff
+    cmds:
+      - "{{.ROOT_DIR}}/{{.VENV_NAME}}/bin/ruff check {{.ROOT_DIR}}/moderate/moderate {{.ROOT_DIR}}/moderate/moderate_tests"
+
+  lint-fix:
+    desc: Lint and auto-fix Python code using ruff
+    cmds:
+      - "{{.ROOT_DIR}}/{{.VENV_NAME}}/bin/ruff check --fix {{.ROOT_DIR}}/moderate/moderate {{.ROOT_DIR}}/moderate/moderate_tests"

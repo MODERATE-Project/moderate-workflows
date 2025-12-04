@@ -30,10 +30,6 @@ setup(
         "pydantic>=2.0,<3.0",
     ],
     extras_require={
-        "dev": [
-            f"dagster-webserver=={_VERSION_DAGSTER}",
-            "pytest",
-            "black",
-        ]
+        "dev": [f"dagster-webserver=={_VERSION_DAGSTER}", "pytest", "black", "ruff"]
     },
 )

@@ -10,6 +10,11 @@ import moderate.resources
 import moderate.trust
 from moderate.enums import ResourceNames, VariableDefaults, Variables
 
+# Optional: Validate configuration at module load time
+# Uncomment to enable fail-fast validation
+# from moderate.validation import validate_resources
+# validate_resources(raise_on_error=True)
+
 all_assets = load_assets_from_modules(
     [
         moderate.assets,

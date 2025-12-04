@@ -1,3 +1,30 @@
+"""Configuration enumerations for MODERATE workflows.
+
+This module defines enumerations used throughout the codebase for:
+- Resource names for Dagster dependency injection
+- Environment variable names for configuration
+- Default values for optional configuration
+- State namespace identifiers
+
+Using enums provides type safety, autocomplete support, and a single source
+of truth for configuration keys across the application.
+
+Example:
+    # Access resource by enum key
+    @op
+    def my_op(context):
+        keycloak = context.resources[ResourceNames.KEYCLOAK.value]
+
+    # Reference environment variables safely
+    server_url = os.getenv(Variables.KEYCLOAK_SERVER_URL.value)
+
+    # Use defaults when env var not set
+    realm = os.getenv(
+        Variables.KEYCLOAK_MAIN_REALM_NAME.value,
+        VariableDefaults.KEYCLOAK_MAIN_REALM_NAME.value
+    )
+"""
+
 import enum
 
 

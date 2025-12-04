@@ -1,8 +1,34 @@
+"""Resource definitions for external service integrations.
+
+This module implements Dagster ConfigurableResource classes for integrating with
+external services used by the MODERATE workflows:
+
+- KeycloakResource: Identity management and user authentication
+- PostgresResource: Database connections and state management
+- OpenMetadataResource: Data catalog and metadata ingestion
+- S3ObjectStorageResource: S3-compatible object storage client
+- PlatformAPIResource: MODERATE platform REST API integration
+- RabbitResource: RabbitMQ message queue for async workflows
+
+All resources use environment variable injection via EnvVar for configuration,
+ensuring secure credential management and environment-specific settings.
+
+Example:
+    Resources are injected into Dagster ops via dependency injection:
+
+    @op
+    def my_op(keycloak: KeycloakResource):
+        admin = keycloak.get_keycloak_admin()
+        users_count = admin.users_count()
+"""
+
 import json
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, List, Union
+from datetime import datetime, timedelta
+from threading import Lock
+from typing import Any, Dict, Generator, List, Optional, Union
 
 import boto3
 import pika
@@ -58,8 +84,20 @@ class PostgresResource(ConfigurableResource):
     port: int
     username: str
     password: str
+    pool_size: int = 5
+    max_overflow: int = 10
+    pool_timeout: int = 30
+    pool_recycle: int = 3600
 
     def postgres_url(self, db_name=None) -> str:
+        """Build PostgreSQL connection URL.
+
+        Args:
+            db_name: Optional database name to connect to
+
+        Returns:
+            PostgreSQL connection URL string
+        """
         url = f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}"
 
         if db_name:
@@ -68,7 +106,32 @@ class PostgresResource(ConfigurableResource):
         return url
 
     def create_engine(self, db_name=None, **kwargs) -> Engine:
-        return create_engine(self.postgres_url(db_name=db_name), **kwargs)
+        """Create SQLAlchemy engine with connection pooling configuration.
+
+        Args:
+            db_name: Optional database name to connect to
+            **kwargs: Additional SQLAlchemy engine arguments (override defaults)
+
+        Returns:
+            Configured SQLAlchemy Engine instance
+
+        Note:
+            Default pool settings:
+            - pool_size: 5 (number of persistent connections)
+            - max_overflow: 10 (additional connections when pool exhausted)
+            - pool_timeout: 30s (wait time for available connection)
+            - pool_recycle: 3600s (recycle connections after 1 hour)
+        """
+        pool_kwargs = {
+            "pool_size": self.pool_size,
+            "max_overflow": self.max_overflow,
+            "pool_timeout": self.pool_timeout,
+            "pool_recycle": self.pool_recycle,
+        }
+
+        pool_kwargs.update(kwargs)
+
+        return create_engine(self.postgres_url(db_name=db_name), **pool_kwargs)
 
     def create_database(self, name: str):
         logger = get_dagster_logger()
@@ -127,6 +190,13 @@ class PlatformAPIResource(ConfigurableResource):
     base_url: str
     username: str
     password: str
+    token_ttl_seconds: int = 300
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._cached_token: Optional[str] = None
+        self._token_expiry: Optional[datetime] = None
+        self._token_lock = Lock()
 
     def build_url(self, *parts: List[str]) -> str:
         return self.base_url.strip("/") + "/" + "/".join(parts)
@@ -162,23 +232,51 @@ class PlatformAPIResource(ConfigurableResource):
         return self.build_url("job", str(job_id))
 
     def get_token(self) -> str:
+        """Get authentication token with TTL-based caching.
+
+        Returns a cached token if available and not expired, otherwise
+        requests a new token from the API. Thread-safe via lock.
+
+        Returns:
+            Access token string for API authentication.
+        """
         logger = get_dagster_logger()
-        url = self.build_url("api", "token")
 
-        data = {
-            "username": self.username,
-            "password": self.password,
-        }
+        with self._token_lock:
+            now = datetime.utcnow()
 
-        logger.debug(
-            "Requesting access token from %s (username=%s)", url, self.username
-        )
+            if self._cached_token and self._token_expiry and self._token_expiry > now:
+                logger.debug(
+                    "Using cached access token (expires in %s seconds)",
+                    (self._token_expiry - now).total_seconds(),
+                )
+                return self._cached_token
 
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        response = requests.request("POST", url, headers=headers, data=data)
-        response.raise_for_status()
-        logger.debug(f"Received access token from {url}")
-        return response.json()["access_token"]
+            url = self.build_url("api", "token")
+
+            data = {
+                "username": self.username,
+                "password": self.password,
+            }
+
+            logger.debug(
+                "Requesting access token from %s (username=%s)", url, self.username
+            )
+
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            response = requests.request("POST", url, headers=headers, data=data)
+            response.raise_for_status()
+
+            self._cached_token = response.json()["access_token"]
+            self._token_expiry = now + timedelta(seconds=self.token_ttl_seconds)
+
+            logger.debug(
+                "Received and cached access token from %s (TTL: %s seconds)",
+                url,
+                self.token_ttl_seconds,
+            )
+
+            return self._cached_token
 
     def get_authorization_header(self) -> dict:
         return {"Authorization": f"Bearer {self.get_token()}"}
@@ -193,9 +291,22 @@ class Rabbit:
 class RabbitResource(ConfigurableResource):
     rabbit_url: str
     matrix_profile_queue: str
+    message_error_strategy: str = "skip"
 
     @contextmanager
     def with_rabbit(self) -> Generator[Rabbit, None, None]:
+        """Context manager for RabbitMQ connection lifecycle.
+
+        Establishes connection and channel, yields them for use, and ensures
+        proper cleanup on exit.
+
+        Yields:
+            Rabbit dataclass containing connection and channel
+
+        Example:
+            with rabbit_resource.with_rabbit() as rabbit:
+                rabbit.channel.basic_publish(...)
+        """
         logger = get_dagster_logger()
 
         logger.debug("Connecting to RabbitMQ")
@@ -213,9 +324,34 @@ class RabbitResource(ConfigurableResource):
     def consume_queue_json_messages(
         self, queue: str, inactivity_timeout_secs: int = 5, timeout_secs: int = 30
     ) -> Generator[Dict, None, None]:
+        """Consume JSON messages from a RabbitMQ queue with timeout.
+
+        Connects to the queue and yields decoded JSON messages until either
+        the timeout is reached or no messages arrive within inactivity_timeout.
+
+        Args:
+            queue: Queue name to consume from
+            inactivity_timeout_secs: Max seconds to wait for next message
+            timeout_secs: Total max seconds to consume messages
+
+        Yields:
+            Dict containing decoded JSON message data
+
+        Note:
+            Message error handling strategy (message_error_strategy):
+            - "skip" (default): Log warning and continue to next message
+            - "raise": Raise exception on decode error
+            - "dead_letter": Future support for dead-letter queue
+
+        Example:
+            for message in rabbit.consume_queue_json_messages("my_queue"):
+                process_message(message)
+        """
         logger = get_dagster_logger()
 
         start_time = time.time()
+        messages_processed = 0
+        messages_failed = 0
 
         with self.with_rabbit() as rabbit:
             logger.debug("Consuming messages from queue: %s", queue)
@@ -241,10 +377,32 @@ class RabbitResource(ConfigurableResource):
 
                 try:
                     msg_data = json.loads(body.decode())
-                except json.JSONDecodeError:
-                    logger.warning("Failed to decode message: %s", body)
-                    continue
+                    messages_processed += 1
+                    logger.debug("Decoded message: %s", msg_data)
+                    yield msg_data
 
-                logger.debug("Decoded message: %s", msg_data)
+                except json.JSONDecodeError as e:
+                    messages_failed += 1
+                    logger.warning(
+                        "Failed to decode message (attempt %d): %s - Error: %s",
+                        messages_failed,
+                        body[:100] if body else None,
+                        str(e),
+                    )
 
-                yield msg_data
+                    if self.message_error_strategy == "raise":
+                        raise
+                    elif self.message_error_strategy == "dead_letter":
+                        logger.warning(
+                            "Dead-letter queue support not yet implemented. "
+                            "Message will be skipped."
+                        )
+                    # Default: skip and continue
+
+            elapsed_time = time.time() - start_time
+            logger.info(
+                "Message consumption complete: %d processed, %d failed, %.1fs elapsed",
+                messages_processed,
+                messages_failed,
+                elapsed_time,
+            )
