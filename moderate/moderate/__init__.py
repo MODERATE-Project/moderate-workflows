@@ -85,4 +85,8 @@ defs = Definitions(
         moderate.trust.platform_api_asset_object_sensor,
         moderate.matrix_profile.matrix_profile_messages_sensor,
     ],
+    schedules=[
+        moderate.openmetadata.assets.postgres_ingestion_schedule,
+        moderate.openmetadata.assets.datalake_ingestion_schedule,
+    ],
 )

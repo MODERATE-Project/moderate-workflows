@@ -3,7 +3,15 @@ import re
 import uuid
 from typing import List
 
-from dagster import Config, DynamicOut, DynamicOutput, get_dagster_logger, job, op
+from dagster import (
+    Config,
+    DynamicOut,
+    DynamicOutput,
+    ScheduleDefinition,
+    get_dagster_logger,
+    job,
+    op,
+)
 from slugify import slugify
 from sqlalchemy import text
 
@@ -136,6 +144,12 @@ def postgres_ingestion_job():
     dbnames.map(postgres_metadata_ingestion).map(postgres_profiler_ingestion).collect()
 
 
+postgres_ingestion_schedule = ScheduleDefinition(
+    job=postgres_ingestion_job,
+    cron_schedule="0 * * * *",
+)
+
+
 class DatalakeIngestionConfig(Config):
     source_service_name: str = "platform-datalake"
 
@@ -239,3 +253,9 @@ def datalake_profiler_ingestion(
 def datalake_ingestion_job():
     prefixes = find_datalake_prefixes()
     prefixes.map(datalake_metadata_ingestion).map(datalake_profiler_ingestion).collect()
+
+
+datalake_ingestion_schedule = ScheduleDefinition(
+    job=datalake_ingestion_job,
+    cron_schedule="0 * * * *",
+)
