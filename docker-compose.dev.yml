@@ -35,6 +35,33 @@ services:
       - 8080:8080
     depends_on:
       - postgres
+  # A Docker networking update likely caused Keycloak to require HTTPS when
+  # accessing from localhost while "Require SSL" was set to "External". This
+  # container disables SSL requirements for all realms to work around this issue.
+  keycloak_ssl_disable:
+    image: quay.io/keycloak/keycloak:22.0
+    restart: on-failure
+    entrypoint: []
+    command:
+      - /bin/bash
+      - -c
+      - |
+        set -xe
+        sleep 10
+        /opt/keycloak/bin/kcadm.sh config credentials \
+          --server http://keycloak:8080 \
+          --realm master \
+          --user ${KEYCLOAK_ADMIN} \
+          --password ${KEYCLOAK_ADMIN_PASSWORD}
+        if /opt/keycloak/bin/kcadm.sh get realms/moderate > /dev/null 2>&1; then
+          /opt/keycloak/bin/kcadm.sh update realms/moderate -s sslRequired=NONE
+        fi
+        /opt/keycloak/bin/kcadm.sh update realms/master -s sslRequired=NONE
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    depends_on:
+      - keycloak
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:7.17.13
     restart: on-failure
