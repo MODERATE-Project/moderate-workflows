@@ -146,7 +146,7 @@ def postgres_ingestion_job():
 
 postgres_ingestion_schedule = ScheduleDefinition(
     job=postgres_ingestion_job,
-    cron_schedule="0 * * * *",
+    cron_schedule="0 0,12 * * *",
 )
 
 
@@ -257,5 +257,5 @@ def datalake_ingestion_job():
 
 datalake_ingestion_schedule = ScheduleDefinition(
     job=datalake_ingestion_job,
-    cron_schedule="0 * * * *",
+    cron_schedule="0 0,12 * * *",
 )
