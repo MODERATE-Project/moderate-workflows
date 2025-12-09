@@ -64,14 +64,13 @@ class ResponseDict:
 class KeycloakUserDict(ResponseDict):
     """Wrapper for Keycloak user dictionary responses."""
 
-    user_dict: Dict[str, Any]
-
-    def __post_init__(self):
-        self.the_dict = self.user_dict
+    @property
+    def user_dict(self) -> Dict[str, Any]:
+        return self.the_dict
 
     @property
     def username(self) -> str:
-        return self.user_dict["username"]
+        return self.the_dict["username"]
 
 
 @dataclass

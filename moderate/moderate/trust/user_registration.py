@@ -52,7 +52,7 @@ def propagate_new_user_to_trust_services(
         pprint.pformat(config.keycloak_user_dict),
     )
 
-    kc_user = KeycloakUserDict(user_dict=config.keycloak_user_dict)
+    kc_user = KeycloakUserDict(the_dict=config.keycloak_user_dict)
     payload = {"username": kc_user.username}
     did_url = platform_api.url_ensure_user_trust_did()
     context.log.debug("POST %s: %s", did_url, payload)
@@ -125,7 +125,7 @@ def keycloak_user_sensor(
     user_dicts = keycloak.get_keycloak_admin().get_users({})
     context.log.info("Found %s users in Keycloak", len(user_dicts))
 
-    kc_users = [KeycloakUserDict(user_dict=user_dict) for user_dict in user_dicts]
+    kc_users = [KeycloakUserDict(the_dict=user_dict) for user_dict in user_dicts]
     kc_users = {kc_user.username: kc_user for kc_user in kc_users}
     usernames_all = list(kc_users.keys())
 
