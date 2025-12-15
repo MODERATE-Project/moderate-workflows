@@ -41,7 +41,7 @@ class MatrixProfileJobConfig(Config):
 
     tag: str = "main"
     timeout_secs: int = 3600
-    image_pull_policy: str = "IfNotPresent"
+    image_pull_policy: str = "Always"
     output_bucket: str
     file_url: str
     analysis_variable: str
