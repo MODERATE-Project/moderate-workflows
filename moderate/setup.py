@@ -28,6 +28,7 @@ setup(
         "boto3>=1.29,<2.0",
         "pika>=1.2,<2.0",
         "pydantic>=2.0,<3.0",
+        "kubernetes>=12.0,<32.0",
     ],
     extras_require={
         "dev": [f"dagster-webserver=={_VERSION_DAGSTER}", "pytest", "black", "ruff"]

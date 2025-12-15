@@ -20,6 +20,13 @@ from dagster_k8s import execute_k8s_job
 from pydantic import BaseModel, ValidationError
 
 from moderate.enums import Variables
+from moderate.matrix_profile.log_utils import (
+    extract_error_summary,
+    get_current_namespace,
+    parse_job_name_from_exception,
+    retrieve_pod_logs,
+    upload_logs_to_s3,
+)
 from moderate.resources import (
     PlatformAPIResource,
     RabbitResource,
@@ -54,10 +61,83 @@ def _check_file_exists(s3_client: Any, bucket_name: str, file_key: str):
 
 @dataclass
 class MatrixProfileJobResult:
+    """Result of a Matrix Profile job execution.
+
+    Attributes:
+        workflow_job_id: ID of the workflow job in the Platform API.
+        error: User-friendly error summary if the job failed.
+        error_logs_key: S3 object key for full error logs (if job failed).
+        output_bucket: S3 bucket containing the output report.
+        output_key: S3 object key for the output report.
+    """
+
     workflow_job_id: int
     error: Union[str, None] = None
+    error_logs_key: Union[str, None] = None
     output_bucket: Union[str, None] = None
     output_key: Union[str, None] = None
+
+
+def handle_job_failure(
+    context: OpExecutionContext,
+    exception: Exception,
+    config: MatrixProfileJobConfig,
+    s3_object_storage: S3ObjectStorageResource,
+) -> MatrixProfileJobResult:
+    context.log.error("Failed to run Matrix Profile job: %s", exception)
+
+    # Attempt to retrieve and process pod logs for user-friendly error reporting
+    error_summary = None
+    error_logs_key = None
+
+    job_name = parse_job_name_from_exception(exception)
+
+    if job_name:
+        namespace = get_current_namespace()
+        context.log.info(
+            "Attempting to retrieve logs for job %s in namespace %s",
+            job_name,
+            namespace,
+        )
+
+        logs, logs_error = retrieve_pod_logs(namespace=namespace, job_name=job_name)
+
+        if logs:
+            # Extract user-friendly error summary
+            error_summary = extract_error_summary(logs)
+            context.log.debug("Extracted error summary: %s", error_summary)
+
+            # Upload full logs to S3 for reference
+            s3_client = s3_object_storage.get_client()
+            error_logs_key, upload_error = upload_logs_to_s3(
+                s3_client=s3_client,
+                bucket=s3_object_storage.job_outputs_bucket_name,
+                logs=logs,
+                workflow_job_id=config.workflow_job_id,
+            )
+
+            if upload_error:
+                context.log.warning("Failed to upload logs to S3: %s", upload_error)
+        else:
+            context.log.warning("Failed to retrieve pod logs: %s", logs_error)
+    else:
+        context.log.warning(
+            "Could not parse job name from exception, unable to retrieve pod logs"
+        )
+
+    # Fall back to original exception message if no summary could be extracted
+    if not error_summary:
+        error_summary = (
+            "The analysis job failed. Please check the input data format "
+            "and ensure the analysis variable exists in the dataset."
+        )
+
+    return MatrixProfileJobResult(
+        workflow_job_id=config.workflow_job_id,
+        error=error_summary,
+        error_logs_key=error_logs_key,
+        output_bucket=s3_object_storage.job_outputs_bucket_name,
+    )
 
 
 @op
@@ -93,11 +173,7 @@ def run_matrix_profile(
             env_vars=env_vars,
         )
     except Exception as ex:
-        context.log.error("Failed to run Matrix Profile job: %s", ex)
-
-        return MatrixProfileJobResult(
-            workflow_job_id=config.workflow_job_id, error=str(ex)
-        )
+        return handle_job_failure(context, ex, config, s3_object_storage)
 
     context.log.info(
         "Checking if output report exists: s3://%s/%s",
