@@ -31,6 +31,7 @@ from threading import Lock
 from typing import Any, Dict, Generator, List, Optional, Union
 
 import boto3
+from botocore.config import Config
 import pika
 import requests
 import sqlalchemy.exc
@@ -175,13 +176,26 @@ class S3ObjectStorageResource(ConfigurableResource):
     job_outputs_bucket_name: str
 
     def get_client(self) -> Any:
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url=self.endpoint_url,
-            region_name=self.region,
-            aws_access_key_id=self.access_key_id,
-            aws_secret_access_key=self.secret_access_key,
-        )
+        client_kwargs = {
+            "endpoint_url": self.endpoint_url,
+            "region_name": self.region,
+            "aws_access_key_id": self.access_key_id,
+            "aws_secret_access_key": self.secret_access_key,
+        }
+
+        # GCS S3-compatible API requires disabling new AWS checksum defaults
+        # (boto3 >= 1.36.00 changed defaults that are incompatible with GCS)
+        try:
+            s3_config = Config(
+                request_checksum_calculation="when_required",
+                response_checksum_validation="when_required",
+            )
+            client_kwargs["config"] = s3_config
+        except (TypeError, ValueError):
+            # Fallback for older boto3 versions that don't support these parameters
+            pass
+
+        s3_client = boto3.client("s3", **client_kwargs)
 
         return s3_client
 

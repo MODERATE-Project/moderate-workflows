@@ -267,13 +267,19 @@ def upload_logs_to_s3(
             Bucket=bucket,
             Key=object_key,
             Body=log_bytes,
-            ContentType="text/plain",
         )
         logger.info("Uploaded logs to s3://%s/%s", bucket, object_key)
         return object_key, None
 
     except Exception as ex:
-        logger.error("Failed to upload logs to S3: %s", ex)
+        # Log detailed error information for debugging S3/GCS issues
+        logger.error(
+            "Failed to upload logs to S3 (bucket=%s, key=%s, size=%d bytes): %s",
+            bucket,
+            object_key,
+            len(log_bytes),
+            ex,
+        )
         return "", f"Failed to upload logs: {ex}"
 
 
