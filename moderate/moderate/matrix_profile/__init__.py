@@ -16,15 +16,12 @@ from dagster import (
     op,
     sensor,
 )
-from dagster_k8s import execute_k8s_job
 from pydantic import BaseModel, ValidationError
 
 from moderate.enums import Variables
 from moderate.matrix_profile.log_utils import (
+    execute_k8s_job_with_log_capture,
     extract_error_summary,
-    get_current_namespace,
-    parse_job_name_from_exception,
-    retrieve_pod_logs,
     upload_logs_to_s3,
 )
 from moderate.resources import (
@@ -80,52 +77,48 @@ class MatrixProfileJobResult:
 
 def handle_job_failure(
     context: OpExecutionContext,
-    exception: Exception,
     config: MatrixProfileJobConfig,
     s3_object_storage: S3ObjectStorageResource,
+    logs: Union[str, None],
+    error_message: Union[str, None],
 ) -> MatrixProfileJobResult:
-    context.log.error("Failed to run Matrix Profile job: %s", exception)
+    """Handle a failed Matrix Profile job by processing logs and creating result.
 
-    # Attempt to retrieve and process pod logs for user-friendly error reporting
+    Args:
+        context: Dagster op execution context.
+        config: Job configuration.
+        s3_object_storage: S3 storage resource for uploading logs.
+        logs: Pod logs retrieved before job cleanup (may be None).
+        error_message: Error message from job failure.
+
+    Returns:
+        MatrixProfileJobResult with error information.
+    """
+    context.log.error("Matrix Profile job failed: %s", error_message)
+
     error_summary = None
     error_logs_key = None
 
-    job_name = parse_job_name_from_exception(exception)
+    if logs:
+        # Extract user-friendly error summary
+        error_summary = extract_error_summary(logs)
+        context.log.debug("Extracted error summary: %s", error_summary)
 
-    if job_name:
-        namespace = get_current_namespace()
-        context.log.info(
-            "Attempting to retrieve logs for job %s in namespace %s",
-            job_name,
-            namespace,
+        # Upload full logs to S3 for reference
+        s3_client = s3_object_storage.get_client()
+        error_logs_key, upload_error = upload_logs_to_s3(
+            s3_client=s3_client,
+            bucket=s3_object_storage.job_outputs_bucket_name,
+            logs=logs,
+            workflow_job_id=config.workflow_job_id,
         )
 
-        logs, logs_error = retrieve_pod_logs(namespace=namespace, job_name=job_name)
-
-        if logs:
-            # Extract user-friendly error summary
-            error_summary = extract_error_summary(logs)
-            context.log.debug("Extracted error summary: %s", error_summary)
-
-            # Upload full logs to S3 for reference
-            s3_client = s3_object_storage.get_client()
-            error_logs_key, upload_error = upload_logs_to_s3(
-                s3_client=s3_client,
-                bucket=s3_object_storage.job_outputs_bucket_name,
-                logs=logs,
-                workflow_job_id=config.workflow_job_id,
-            )
-
-            if upload_error:
-                context.log.warning("Failed to upload logs to S3: %s", upload_error)
-        else:
-            context.log.warning("Failed to retrieve pod logs: %s", logs_error)
+        if upload_error:
+            context.log.warning("Failed to upload logs to S3: %s", upload_error)
     else:
-        context.log.warning(
-            "Could not parse job name from exception, unable to retrieve pod logs"
-        )
+        context.log.warning("No pod logs available for error analysis")
 
-    # Fall back to original exception message if no summary could be extracted
+    # Fall back to generic message if no summary could be extracted
     if not error_summary:
         error_summary = (
             "The analysis job failed. Please check the input data format "
@@ -153,27 +146,32 @@ def run_matrix_profile(
         "Running Matrix Profile job (image=%s) (output_key=%s)", image, output_key
     )
 
-    env_vars = {
-        "S3_ACCESS_KEY_ID": s3_object_storage.access_key_id,
-        "S3_SECRET_ACCESS_KEY": s3_object_storage.secret_access_key,
-        "OUTPUT_KEY": output_key,
-        "OUTPUT_BUCKET": config.output_bucket,
-        "FILE_URL": config.file_url,
-        "ANALYSIS_VARIABLE": config.analysis_variable,
-    }
+    env_vars = [
+        "S3_ACCESS_KEY_ID={}".format(s3_object_storage.access_key_id),
+        "S3_SECRET_ACCESS_KEY={}".format(s3_object_storage.secret_access_key),
+        "OUTPUT_KEY={}".format(output_key),
+        "OUTPUT_BUCKET={}".format(config.output_bucket),
+        "FILE_URL={}".format(config.file_url),
+        "ANALYSIS_VARIABLE={}".format(config.analysis_variable),
+    ]
 
-    env_vars = ["{}={}".format(k, v) for k, v in env_vars.items()]
+    # Use custom job execution that captures logs before cleanup on failure
+    job_result = execute_k8s_job_with_log_capture(
+        context=context,
+        image=image,
+        env_vars=env_vars,
+        image_pull_policy=config.image_pull_policy,
+        timeout=config.timeout_secs,
+    )
 
-    try:
-        execute_k8s_job(
+    if not job_result.success:
+        return handle_job_failure(
             context=context,
-            image=image,
-            image_pull_policy=config.image_pull_policy,
-            timeout=config.timeout_secs,
-            env_vars=env_vars,
+            config=config,
+            s3_object_storage=s3_object_storage,
+            logs=job_result.logs,
+            error_message=job_result.error_message,
         )
-    except Exception as ex:
-        return handle_job_failure(context, ex, config, s3_object_storage)
 
     context.log.info(
         "Checking if output report exists: s3://%s/%s",

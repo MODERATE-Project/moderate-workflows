@@ -4,6 +4,7 @@ This module provides functions for:
 - Retrieving logs from pods associated with Kubernetes jobs
 - Extracting user-friendly error summaries from verbose logs
 - Uploading full logs to S3 for reference
+- Executing Kubernetes jobs with log retrieval on failure
 
 These utilities are used to improve error reporting for Matrix Profile jobs
 by providing actionable information to end users instead of exposing
@@ -11,11 +12,13 @@ Kubernetes-internal details.
 """
 
 import re
+import time
 import uuid
-from datetime import datetime
-from typing import Any, Optional, Tuple
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, List, Optional, Tuple
 
-from dagster import get_dagster_logger
+from dagster import OpExecutionContext, get_dagster_logger
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 
@@ -240,7 +243,7 @@ def upload_logs_to_s3(
     """
     logger = get_dagster_logger()
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     unique_id = uuid.uuid4().hex[:8]
     object_key = (
         f"logs/matrix-profile-job-{workflow_job_id}-{timestamp}-{unique_id}.log"
@@ -325,3 +328,279 @@ def get_current_namespace() -> str:
             return f.read().strip()
     except FileNotFoundError:
         return "default"
+
+
+def delete_k8s_job(job_name: str, namespace: str) -> None:
+    """Delete a Kubernetes job.
+
+    Args:
+        job_name: Name of the job to delete.
+        namespace: Kubernetes namespace where the job runs.
+    """
+    logger = get_dagster_logger()
+
+    try:
+        _load_k8s_config()
+    except Exception as ex:
+        logger.warning("Failed to load Kubernetes config for job deletion: %s", ex)
+        return
+
+    batch_v1 = client.BatchV1Api()
+
+    try:
+        batch_v1.delete_namespaced_job(
+            name=job_name,
+            namespace=namespace,
+            body=client.V1DeleteOptions(propagation_policy="Foreground"),
+        )
+        logger.info("Deleted Kubernetes job %s in namespace %s", job_name, namespace)
+    except ApiException as ex:
+        if ex.status == 404:
+            logger.debug("Job %s already deleted or not found", job_name)
+        else:
+            logger.warning("Failed to delete job %s: %s", job_name, ex)
+
+
+@dataclass
+class K8sJobResult:
+    """Result of a Kubernetes job execution.
+
+    Attributes:
+        success: Whether the job completed successfully.
+        job_name: Name of the Kubernetes job.
+        namespace: Kubernetes namespace where the job ran.
+        logs: Pod logs if available (especially on failure).
+        error_message: Error description if the job failed.
+    """
+
+    success: bool
+    job_name: str
+    namespace: str
+    logs: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+# Default timeout for waiting operations (seconds)
+_DEFAULT_WAIT_TIMEOUT = 600
+
+# Poll interval for job status checks (seconds)
+_JOB_POLL_INTERVAL = 2
+
+
+def _create_k8s_job_spec(
+    job_name: str,
+    image: str,
+    env_vars: List[str],
+    image_pull_policy: str = "Always",
+) -> client.V1Job:
+    """Create a Kubernetes Job specification.
+
+    Args:
+        job_name: Name for the job.
+        image: Container image to run.
+        env_vars: List of environment variables in "KEY=VALUE" format.
+        image_pull_policy: Image pull policy (Always, IfNotPresent, Never).
+
+    Returns:
+        V1Job object ready to be created.
+    """
+    # Parse environment variables
+    env_list = []
+    for env_var in env_vars:
+        if "=" in env_var:
+            key, value = env_var.split("=", 1)
+            env_list.append(client.V1EnvVar(name=key, value=value))
+
+    container = client.V1Container(
+        name="main",
+        image=image,
+        image_pull_policy=image_pull_policy,
+        env=env_list,
+    )
+
+    pod_spec = client.V1PodSpec(
+        containers=[container],
+        restart_policy="Never",
+    )
+
+    template = client.V1PodTemplateSpec(
+        metadata=client.V1ObjectMeta(labels={"job-name": job_name}),
+        spec=pod_spec,
+    )
+
+    job_spec = client.V1JobSpec(
+        template=template,
+        backoff_limit=0,
+        ttl_seconds_after_finished=300,
+    )
+
+    job = client.V1Job(
+        api_version="batch/v1",
+        kind="Job",
+        metadata=client.V1ObjectMeta(name=job_name),
+        spec=job_spec,
+    )
+
+    return job
+
+
+def _wait_for_job_completion(
+    batch_api: client.BatchV1Api,
+    job_name: str,
+    namespace: str,
+    timeout: int,
+) -> Tuple[bool, Optional[str]]:
+    """Wait for a Kubernetes job to complete.
+
+    Args:
+        batch_api: Kubernetes Batch API client.
+        job_name: Name of the job to wait for.
+        namespace: Kubernetes namespace.
+        timeout: Maximum time to wait in seconds.
+
+    Returns:
+        Tuple of (success, error_message).
+    """
+    logger = get_dagster_logger()
+    start_time = time.time()
+
+    while True:
+        elapsed = time.time() - start_time
+        if elapsed > timeout:
+            return False, f"Job timed out after {timeout} seconds"
+
+        try:
+            job = batch_api.read_namespaced_job_status(
+                name=job_name, namespace=namespace
+            )
+        except ApiException as ex:
+            return False, f"Failed to read job status: {ex.reason}"
+
+        status = job.status
+
+        # Check for completion
+        if status.succeeded is not None and status.succeeded > 0:
+            logger.debug("Job %s completed successfully", job_name)
+            return True, None
+
+        # Check for failure
+        if status.failed is not None and status.failed > 0:
+            conditions = status.conditions or []
+            failure_reason = "Job failed"
+            for condition in conditions:
+                if condition.type == "Failed" and condition.status == "True":
+                    failure_reason = (
+                        condition.message or condition.reason or failure_reason
+                    )
+            return False, failure_reason
+
+        time.sleep(_JOB_POLL_INTERVAL)
+
+
+def execute_k8s_job_with_log_capture(
+    context: OpExecutionContext,
+    image: str,
+    env_vars: List[str],
+    namespace: Optional[str] = None,
+    image_pull_policy: str = "Always",
+    timeout: int = _DEFAULT_WAIT_TIMEOUT,
+    job_name: Optional[str] = None,
+) -> K8sJobResult:
+    """Execute a Kubernetes job with log capture on failure.
+
+    This function creates and runs a Kubernetes job, waiting for completion.
+    Unlike dagster-k8s's execute_k8s_job, this function retrieves pod logs
+    BEFORE deleting a failed job, ensuring error information is preserved.
+
+    Args:
+        context: Dagster op execution context.
+        image: Container image to run.
+        env_vars: List of environment variables in "KEY=VALUE" format.
+        namespace: Kubernetes namespace (defaults to current namespace).
+        image_pull_policy: Image pull policy.
+        timeout: Maximum time to wait for job completion in seconds.
+        job_name: Optional job name (auto-generated if not provided).
+
+    Returns:
+        K8sJobResult with success status and logs on failure.
+    """
+    logger = context.log
+
+    # Determine namespace
+    if namespace is None:
+        namespace = get_current_namespace()
+
+    # Generate job name if not provided
+    if job_name is None:
+        job_name = uuid.uuid4().hex
+
+    logger.info(
+        "Creating Kubernetes job %s in namespace %s (image=%s)...",
+        job_name,
+        namespace,
+        image,
+    )
+
+    # Load k8s config
+    try:
+        _load_k8s_config()
+    except Exception as ex:
+        return K8sJobResult(
+            success=False,
+            job_name=job_name,
+            namespace=namespace,
+            error_message=f"Failed to load Kubernetes config: {ex}",
+        )
+
+    batch_api = client.BatchV1Api()
+
+    # Create the job
+    job_spec = _create_k8s_job_spec(
+        job_name=job_name,
+        image=image,
+        env_vars=env_vars,
+        image_pull_policy=image_pull_policy,
+    )
+
+    try:
+        batch_api.create_namespaced_job(namespace=namespace, body=job_spec)
+    except ApiException as ex:
+        return K8sJobResult(
+            success=False,
+            job_name=job_name,
+            namespace=namespace,
+            error_message=f"Failed to create job: {ex.reason}",
+        )
+
+    logger.info("Waiting for Kubernetes job %s to finish...", job_name)
+
+    # Wait for completion
+    success, error_message = _wait_for_job_completion(
+        batch_api=batch_api,
+        job_name=job_name,
+        namespace=namespace,
+        timeout=timeout,
+    )
+
+    # On failure, retrieve logs BEFORE deleting the job
+    logs = None
+    if not success:
+        logger.info("Job %s failed, retrieving logs before cleanup...", job_name)
+        logs, logs_error = retrieve_pod_logs(
+            namespace=namespace,
+            job_name=job_name,
+        )
+        if logs_error:
+            logger.warning("Failed to retrieve pod logs: %s", logs_error)
+
+    # Clean up the job
+    logger.info("Deleting Kubernetes job %s in namespace %s...", job_name, namespace)
+    delete_k8s_job(job_name=job_name, namespace=namespace)
+
+    return K8sJobResult(
+        success=success,
+        job_name=job_name,
+        namespace=namespace,
+        logs=logs,
+        error_message=error_message,
+    )
