@@ -278,6 +278,8 @@ def parse_job_name_from_exception(exception: Exception) -> Optional[str]:
     """Attempt to parse the Kubernetes job name from an exception.
 
     dagster-k8s exceptions typically include the job name in the message.
+    Job names are 32-character hex strings (e.g., 5a73cda947b1e33caee479613ec18ebe)
+    or dagster-prefixed names (e.g., dagster-run-xxx).
 
     Args:
         exception: The exception raised by execute_k8s_job.
@@ -288,19 +290,23 @@ def parse_job_name_from_exception(exception: Exception) -> Optional[str]:
     exception_str = str(exception)
 
     # Pattern to match job names in dagster-k8s exceptions
-    # Common formats: "job dagster-run-xxx failed" or "Job dagster-xxx"
+    # Order matters: more specific patterns first
     patterns = [
-        r"job[:\s]+([a-z0-9][-a-z0-9]*[a-z0-9])",
-        r"Job[:\s]+([a-z0-9][-a-z0-9]*[a-z0-9])",
-        r"dagster-run-[a-f0-9-]+",
-        r"dagster-step-[a-f0-9]+",
+        # Hex job names (32 chars) - most common for execute_k8s_job
+        # Matches "for job <hex>" or "job <hex>" patterns
+        r"(?:for\s+)?job\s+([a-f0-9]{32})",
+        # Dagster run/step job names
+        r"(dagster-run-[a-f0-9-]+)",
+        r"(dagster-step-[a-f0-9]+)",
+        # Generic job name pattern (only as fallback, requires minimum length)
+        r"job[:\s]+([a-z0-9][-a-z0-9]{7,}[a-z0-9])",
     ]
 
     for pattern in patterns:
         match = re.search(pattern, exception_str, re.IGNORECASE)
         if match:
-            # Return the captured group if present, otherwise the full match
-            return match.group(1) if match.lastindex else match.group(0)
+            # Return the captured group
+            return match.group(1)
 
     return None
 
