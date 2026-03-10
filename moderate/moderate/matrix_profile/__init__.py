@@ -233,8 +233,13 @@ class MatrixProfileMessage(BaseModel):
 
 _DEFAULT_PRESIGNED_URLS_EXPIRATION_SECS = 3600 * 24
 
+_SENSOR_MIN_INTERVAL_SECONDS: int = 60
 
-@sensor(job=matrix_profile_job)
+
+@sensor(
+    job=matrix_profile_job,
+    minimum_interval_seconds=_SENSOR_MIN_INTERVAL_SECONDS,
+)
 def matrix_profile_messages_sensor(
     rabbit: RabbitResource,
     context: SensorEvaluationContext,
