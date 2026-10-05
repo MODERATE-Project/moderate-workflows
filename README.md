@@ -1,6 +1,6 @@
 # MODERATE workflows
 
-A project that implements the data pipelines for the MODERATE project. These pipelines are built on top of Dagster, which acts as the workflow orchestration service. The pipelines are run on MODERATE's Kubernetes cluster using the Dagster Kubernetes integration.
+A project that implements the data pipelines for the MODERATE project. These pipelines are built on top of Dagster, which acts as the workflow orchestration service.
 
 ## Container images
 
@@ -19,6 +19,20 @@ No credentials are needed to pull it:
 ```console
 docker pull ghcr.io/moderate-project/moderate-workflows:latest
 ```
+
+## Matrix-profile jobs
+
+Dagster runs each matrix-profile analysis in its own container, started through the Docker daemon. The code location needs access to that daemon, usually through a mounted `/var/run/docker.sock`. Dagster removes the container once the analysis finishes, fails, times out or is cancelled. Unless the run was cancelled, the container output goes to the Dagster run log. If the analysis fails, Dagster also uploads the logs to the job outputs bucket.
+
+| Variable                   | Purpose                                                               |
+| -------------------------- | --------------------------------------------------------------------- |
+| `MATRIX_PROFILE_JOB_IMAGE` | Job image repository                                                  |
+| `MATRIX_PROFILE_JOB_TAG`   | Image tag, or a `sha256:` digest that pins an exact build             |
+| `DOCKER_JOB_NETWORK`       | Network the job containers join (default: Docker's bridge network)    |
+
+Set `DOCKER_JOB_NETWORK` to the name that `docker network ls` shows, since Compose prefixes network names with the project name. The job reads its input and uploads its report through the same `S3_ENDPOINT_URL`, `S3_REGION` and credentials as Dagster, so the job network must reach that endpoint.
+
+Pin the image by digest in production. If a pull fails, the Docker SDK falls back to any local image with the same tag, so a mutable tag such as `main` can silently run an old build.
 
 ## Development
 
@@ -41,7 +55,7 @@ These should be optional, so you can still run the pipelines that don't depend o
 
 ### Deploy a local Kubernetes-based instance
 
-There's a task in the Taskfile called `start-dev-k8s` that deploys a local Kubernetes cluster using Minikube. This aims to represent, as faithfully as possible, the same environment as the production Kubernetes cluster. It is useful for testing the Dagster integration with Kubernetes locally.
+There's a task in the Taskfile called `start-dev-k8s` that deploys a local Kubernetes cluster using Minikube, with Dagster and OpenMetadata installed from their Helm charts. Matrix-profile jobs can't run there because the pods have no Docker daemon; use `task dagster-dev` for those.
 
 Running `task start-dev-k8s` will do the following:
 

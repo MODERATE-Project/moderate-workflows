@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This project implements data pipelines for the MODERATE project using Dagster as the workflow orchestration service. Pipelines run on a Kubernetes cluster using the Dagster Kubernetes integration. The system integrates with multiple services including Keycloak (identity), PostgreSQL (database), OpenMetadata (data catalog), S3-compatible object storage, RabbitMQ, and the MODERATE platform API.
+This project implements data pipelines for the MODERATE project using Dagster as the workflow orchestration service. Matrix-profile analyses run as separate containers on a Docker daemon. The system integrates with multiple services including Keycloak (identity), PostgreSQL (database), OpenMetadata (data catalog), S3-compatible object storage, RabbitMQ, Docker, and the MODERATE platform API.
 
 ## Core Architecture
 
@@ -13,7 +13,7 @@ This project implements data pipelines for the MODERATE project using Dagster as
 The main Dagster definitions are in `moderate/moderate/__init__.py:22-83`, which loads:
 
 - **Assets**: Data artifacts defined in `moderate.assets`, `moderate.openmetadata.assets`, `moderate.trust`, and `moderate.datasets`
-- **Resources**: Configurable services (Keycloak, Postgres, OpenMetadata, S3, Platform API, RabbitMQ) defined in `moderate/moderate/resources.py`
+- **Resources**: Configurable services (Keycloak, Postgres, OpenMetadata, S3, Platform API, RabbitMQ, Docker) defined in `moderate/moderate/resources.py`
 - **Jobs**: Runnable workflows including metadata ingestion, trust service propagation, and matrix profile jobs
 - **Sensors**: Event-driven triggers monitoring Keycloak users, platform API asset objects, and RabbitMQ messages
 
@@ -30,7 +30,7 @@ All external service integrations use Dagster's `ConfigurableResource` pattern d
 - **openmetadata/**: Metadata and profiler workflow ingestion for Postgres and S3 datalake
 - **trust/**: Integration with trust services for user DID generation and asset object proof creation
 - **datasets/**: Data pipeline definitions for genome project and building stock datasets
-- **matrix_profile/**: K8s job execution for matrix profile analysis workflows
+- **matrix_profile/**: Runs matrix profile analyses as Docker containers and reports results to the platform API
 
 ## Development Commands
 
@@ -74,6 +74,8 @@ task forward-k8s-open-metadata-ui # OpenMetadata at http://<your-ip>:8585
 
 **Important**: Access UIs using your local IP address (not localhost) due to OpenMetadata OIDC integration with Keycloak.
 
+Matrix-profile jobs can't run in this environment because the pods have no Docker daemon. Use `task dagster-dev` for those.
+
 ### OpenMetadata Token Update
 
 After deploying locally, update the OpenMetadata integration token:
@@ -97,6 +99,8 @@ Run tests from the moderate package:
 ```bash
 cd moderate && pytest moderate_tests
 ```
+
+The container runner tests need a reachable Docker daemon and are skipped without one.
 
 ### Clean Development Environment
 
@@ -128,6 +132,8 @@ RABBIT_URL=amqp://guest:guest@localhost:5672
 
 # Matrix Profile Job
 MATRIX_PROFILE_JOB_IMAGE=<image>
+MATRIX_PROFILE_JOB_TAG=<tag or sha256 digest>
+DOCKER_JOB_NETWORK=<network>  # optional, defaults to Docker's bridge network
 ```
 
 Dependencies on these services are optional; pipelines not requiring them will still run.
@@ -136,8 +142,8 @@ Dependencies on these services are optional; pipelines not requiring them will s
 
 The Dagster code location is defined in `moderate/setup.py`:
 
-- Dependencies: Dagster 1.8.7, postgres/k8s extensions, pandas, keycloak, openmetadata-ingestion, boto3, pika, pydantic
-- Dev dependencies: dagster-webserver, pytest, black
+- Dependencies: Dagster 1.8.7 with dagster-postgres and dagster-webserver, pandas, keycloak, openmetadata-ingestion 1.5.15, boto3, pika, pydantic, docker
+- Dev dependencies: pytest, black, ruff
 - Install: `pip install -e "moderate[dev]"`
 
 ## Key Dagster Patterns
@@ -156,16 +162,18 @@ The system uses sensors to react to external events:
 
 - `keycloak_user_sensor`: Polls Keycloak for new users, triggers trust DID generation
 - `platform_api_asset_object_sensor`: Monitors API for new asset objects, creates proofs
-- `matrix_profile_messages_sensor`: Consumes RabbitMQ messages, launches K8s jobs
+- `matrix_profile_messages_sensor`: Consumes RabbitMQ messages, launches matrix profile runs
 
 Sensors maintain state using PostgresState to track last processed items and avoid duplicates.
 
-### Kubernetes Job Execution
+### Docker Job Execution
 
-Matrix profile jobs use `dagster_k8s.execute_k8s_job` to run containerized workloads:
+Matrix profile jobs run as containers through the Docker SDK (`moderate/moderate/matrix_profile/container.py`):
 
-- Job config includes image, tag, timeout, pull policy
-- Environment variables and secrets passed to containers
+- The code location needs access to the Docker daemon, usually through a mounted socket
+- Job config includes image, tag or `sha256:` digest, timeout and pull policy
+- Containers join `DOCKER_JOB_NETWORK` and get the S3 endpoint, region and credentials as environment variables
+- The op removes the container after every outcome, including timeout and run cancellation. Unless the run was cancelled, it first copies the container logs to the Dagster run log
 - Job output written to S3, status updated via Platform API
 
 ## Taskfile Variables
