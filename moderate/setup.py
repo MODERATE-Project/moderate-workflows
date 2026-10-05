@@ -12,11 +12,12 @@ setup(
         f"dagster=={_VERSION_DAGSTER}",
         f"dagster-postgres=={_VERSION_DAGSTER_EXT}",
         f"dagster-k8s=={_VERSION_DAGSTER_EXT}",
+        f"dagster-webserver=={_VERSION_DAGSTER}",
         "pandas[performance,postgresql]>=2.0,<3.0",
         "numpy>=1.0,<2.0",
         "python-keycloak>=2.16.1,<3.0",
         "sh==2.0.6",
-        "openmetadata-ingestion[postgres,datalake-s3,datalake-gcp,datalake-azure]==1.5.4",
+        "openmetadata-ingestion[postgres,datalake-s3,datalake-gcp,datalake-azure]~=1.5.15.0",
         "google-cloud-storage>=2.10,<3.0",
         "sqllineage>=1.4,<1.5",
         "SQLAlchemy>=1.4,<1.5",
@@ -30,7 +31,5 @@ setup(
         "pydantic>=2.0,<3.0",
         "kubernetes>=12.0,<32.0",
     ],
-    extras_require={
-        "dev": [f"dagster-webserver=={_VERSION_DAGSTER}", "pytest", "black", "ruff"]
-    },
+    extras_require={"dev": ["pytest", "black", "ruff"]},
 )
