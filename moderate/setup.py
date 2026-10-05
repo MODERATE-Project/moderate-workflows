@@ -11,7 +11,6 @@ setup(
     install_requires=[
         f"dagster=={_VERSION_DAGSTER}",
         f"dagster-postgres=={_VERSION_DAGSTER_EXT}",
-        f"dagster-k8s=={_VERSION_DAGSTER_EXT}",
         f"dagster-webserver=={_VERSION_DAGSTER}",
         "pandas[performance,postgresql]>=2.0,<3.0",
         "numpy>=1.0,<2.0",
@@ -29,7 +28,7 @@ setup(
         "boto3>=1.29,<2.0",
         "pika>=1.2,<2.0",
         "pydantic>=2.0,<3.0",
-        "kubernetes>=12.0,<32.0",
+        "docker>=7.1,<8.0",
     ],
     extras_require={"dev": ["pytest", "black", "ruff"]},
 )

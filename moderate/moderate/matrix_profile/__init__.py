@@ -1,6 +1,7 @@
 import dataclasses
 import os
 import uuid
+from contextlib import closing
 from dataclasses import dataclass
 from typing import Any, Union
 
@@ -19,12 +20,10 @@ from dagster import (
 from pydantic import BaseModel, ValidationError
 
 from moderate.enums import Variables
-from moderate.matrix_profile.log_utils import (
-    execute_k8s_job_with_log_capture,
-    extract_error_summary,
-    upload_logs_to_s3,
-)
+from moderate.matrix_profile.container import image_reference, run_container
+from moderate.matrix_profile.log_utils import extract_error_summary, upload_logs_to_s3
 from moderate.resources import (
+    DockerResource,
     PlatformAPIResource,
     RabbitResource,
     S3ObjectStorageResource,
@@ -34,6 +33,7 @@ from moderate.resources import (
 class MatrixProfileJobConfig(Config):
     image: str = "ghcr.io/moderate-project/moderate-matrix-profile-workflow"
 
+    # A tag or a "sha256:" digest
     tag: str = "main"
     timeout_secs: int = 3600
     image_pull_policy: str = "Always"
@@ -86,7 +86,7 @@ def handle_job_failure(
         context: Dagster op execution context.
         config: Job configuration.
         s3_object_storage: S3 storage resource for uploading logs.
-        logs: Pod logs retrieved before job cleanup (may be None).
+        logs: Container logs read before removal (may be None).
         error_message: Error message from job failure.
 
     Returns:
@@ -114,7 +114,7 @@ def handle_job_failure(
         if upload_error:
             context.log.warning("Failed to upload logs to S3: %s", upload_error)
     else:
-        context.log.warning("No pod logs available for error analysis")
+        context.log.warning("No container logs available for error analysis")
 
     # Fall back to generic message if no summary could be extracted
     if not error_summary:
@@ -136,31 +136,40 @@ def run_matrix_profile(
     context: OpExecutionContext,
     config: MatrixProfileJobConfig,
     s3_object_storage: S3ObjectStorageResource,
+    docker: DockerResource,
 ) -> MatrixProfileJobResult:
-    image = "{}:{}".format(config.image, config.tag)
+    image = image_reference(config.image, config.tag)
     output_key = "matrixprofile-{}.html".format(uuid.uuid4().hex)
 
     context.log.info(
         "Running Matrix Profile job (image=%s) (output_key=%s)", image, output_key
     )
 
-    env_vars = [
-        "S3_ACCESS_KEY_ID={}".format(s3_object_storage.access_key_id),
-        "S3_SECRET_ACCESS_KEY={}".format(s3_object_storage.secret_access_key),
-        "OUTPUT_KEY={}".format(output_key),
-        "OUTPUT_BUCKET={}".format(config.output_bucket),
-        "FILE_URL={}".format(config.file_url),
-        "ANALYSIS_VARIABLE={}".format(config.analysis_variable),
-    ]
+    # The job image reads the region from S3_REGION_NAME
+    environment = {
+        "S3_ACCESS_KEY_ID": s3_object_storage.access_key_id,
+        "S3_SECRET_ACCESS_KEY": s3_object_storage.secret_access_key,
+        "S3_ENDPOINT_URL": s3_object_storage.endpoint_url,
+        "S3_REGION_NAME": s3_object_storage.region,
+        "OUTPUT_KEY": output_key,
+        "OUTPUT_BUCKET": config.output_bucket,
+        "FILE_URL": config.file_url,
+        "ANALYSIS_VARIABLE": config.analysis_variable,
+    }
 
-    # Use custom job execution that captures logs before cleanup on failure
-    job_result = execute_k8s_job_with_log_capture(
-        context=context,
-        image=image,
-        env_vars=env_vars,
-        image_pull_policy=config.image_pull_policy,
-        timeout=config.timeout_secs,
-    )
+    with closing(docker.get_client()) as client:
+        job_result = run_container(
+            client=client,
+            name="matrix-profile-{}".format(context.run_id),
+            image=image,
+            environment=environment,
+            timeout_secs=config.timeout_secs,
+            pull_policy=config.image_pull_policy,
+            network=docker.network,
+        )
+
+    if job_result.logs:
+        context.log.info("Matrix Profile container output:\n%s", job_result.logs)
 
     if not job_result.success:
         return handle_job_failure(

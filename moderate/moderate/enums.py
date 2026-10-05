@@ -35,6 +35,7 @@ class ResourceNames(enum.Enum):
     S3_OBJECT_STORAGE = "s3_object_storage"
     PLATFORM_API = "platform_api"
     RABBIT = "rabbit"
+    DOCKER = "docker"
 
 
 class Variables(enum.Enum):
@@ -62,6 +63,7 @@ class Variables(enum.Enum):
     RABBIT_MATRIX_PROFILE_QUEUE = "MATRIX_PROFILE_QUEUE"
     MATRIX_PROFILE_JOB_IMAGE = "MATRIX_PROFILE_JOB_IMAGE"
     MATRIX_PROFILE_JOB_TAG = "MATRIX_PROFILE_JOB_TAG"
+    DOCKER_JOB_NETWORK = "DOCKER_JOB_NETWORK"
 
 
 class VariableDefaults(enum.Enum):

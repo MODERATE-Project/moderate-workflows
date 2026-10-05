@@ -72,6 +72,9 @@ defs = Definitions(
                 VariableDefaults.RABBIT_MATRIX_PROFILE_QUEUE.value,
             ),
         ),
+        ResourceNames.DOCKER.value: moderate.resources.DockerResource(
+            network=os.getenv(Variables.DOCKER_JOB_NETWORK.value),
+        ),
     },
     jobs=[
         moderate.openmetadata.assets.postgres_ingestion_job,

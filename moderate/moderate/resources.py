@@ -9,6 +9,7 @@ external services used by the MODERATE workflows:
 - S3ObjectStorageResource: S3-compatible object storage client
 - PlatformAPIResource: MODERATE platform REST API integration
 - RabbitResource: RabbitMQ message queue for async workflows
+- DockerResource: Docker daemon that runs workflow job containers
 
 All resources use environment variable injection via EnvVar for configuration,
 ensuring secure credential management and environment-specific settings.
@@ -32,6 +33,7 @@ from typing import Any, Dict, Generator, List, Optional, Union
 
 import boto3
 from botocore.config import Config
+import docker
 import pika
 import requests
 import sqlalchemy.exc
@@ -420,3 +422,20 @@ class RabbitResource(ConfigurableResource):
                 messages_failed,
                 elapsed_time,
             )
+
+
+class DockerResource(ConfigurableResource):
+    """Docker daemon that runs workflow job containers.
+
+    The client reads DOCKER_HOST and the related environment variables, like
+    the Docker CLI, and uses the local socket when they are unset.
+
+    Attributes:
+        network: Network to attach job containers to. Containers use
+            Docker's default bridge network when unset.
+    """
+
+    network: Optional[str] = None
+
+    def get_client(self) -> docker.DockerClient:
+        return docker.from_env()
