@@ -32,9 +32,7 @@ from moderate.resources import (
 
 
 class MatrixProfileJobConfig(Config):
-    image: str = (
-        "europe-west1-docker.pkg.dev/moderate-common/moderate-images/moderate-matrix-profile-workflow"
-    )
+    image: str = "ghcr.io/moderate-project/moderate-matrix-profile-workflow"
 
     tag: str = "main"
     timeout_secs: int = 3600
