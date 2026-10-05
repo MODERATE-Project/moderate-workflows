@@ -2,6 +2,24 @@
 
 A project that implements the data pipelines for the MODERATE project. These pipelines are built on top of Dagster, which acts as the workflow orchestration service. The pipelines are run on MODERATE's Kubernetes cluster using the Dagster Kubernetes integration.
 
+## Container images
+
+The `docker-publish.yml` workflow builds the Dagster code location image and publishes it as a public package on the GitHub Container Registry:
+
+* `ghcr.io/moderate-project/moderate-workflows`
+
+| Event                         | Tags                                         |
+| ----------------------------- | -------------------------------------------- |
+| Push to `main`                | `main`, `latest`, `sha-<short-sha>`          |
+| Release tag (e.g. `v0.2.0`)   | `0.2.0`, `sha-<short-sha>`                   |
+| Pull request to `main`        | Built to validate the Dockerfile, not pushed |
+
+No credentials are needed to pull it:
+
+```console
+docker pull ghcr.io/moderate-project/moderate-workflows:latest
+```
+
 ## Development
 
 ### Configure connection to API and S3
